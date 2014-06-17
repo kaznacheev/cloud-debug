@@ -1,0 +1,18 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
+div {
+    padding: 5px;
+    cursor: pointer;
+}
+
+div:hover:not(.disabled) {
+    background-color: orange;
+    color: white;
+}
+
+div.disabled {
+    color: #aaa;
+}
