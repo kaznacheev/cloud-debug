@@ -1,22 +1,26 @@
-function load() {
-  if (!location.search)
-    return;
+FRONTEND_PROXY_URL = 'http://localhost:8002/';
 
-  var match = location.search.match('deviceId=(.+)&socket=(.+)&path=(.+)');
-  if (!match)
+function load() {
+  var match = location.search && location.search.match('deviceId=(.+)&socket=(.+)&target=(.+)&frontend=(.+)');
+  if (!match) {
+    document.body.textContent = 'Malformed URL';
     return;
+  }
   var deviceId = match[1];
   var socket = match[2];
-  var path = match[3];
+  var target = match[3];
+  var frontendUrl = decodeURIComponent(match[4]);
 
-  var connection = new WebRTCConnection(deviceId, socket, path);
-  connection.onopen = openFrontend2.bind(null, connection);
+  var connection = new WebRTCConnection(deviceId, socket, target);
+  connection.onopen = openFrontend.bind(null, connection, frontendUrl);
 }
 
-function openFrontend2(connection) {
+function openFrontend(connection, frontendUrl) {
+  var frontendPath = frontendUrl.match('serve_rev/@(.*)$')[1];
+  frontendUrl = FRONTEND_PROXY_URL + frontendPath;
+
   var iframe = document.querySelector('iframe');
-  var url = 'http://localhost:8001/devtools.html';
-  iframe.setAttribute('src', url + "?embed=true");
+  iframe.setAttribute('src', frontendUrl);
 
   window.addEventListener('beforeunload', function() {
     connection.sendRTCSignalingMessage({type: 'close'});
@@ -41,11 +45,6 @@ function WebRTCConnection(deviceId, socket, path)
   this._peerConnection = new webkitRTCPeerConnection(servers, {});
   this._peerConnection.onicecandidate = this._onIceCandidate.bind(this);
 
-  this.onopen = function() {};
-  this.onclose = function() {};
-  this.onerror = function() {};
-  this.onmessage = function() {};
-
   var dataChannel = this._peerConnection.createDataChannel("devtools");
   dataChannel.onopen = this._onDataChannelOpen.bind(this, dataChannel);
   dataChannel.onclose = this._onDataChannelClose.bind(this);
@@ -57,7 +56,7 @@ function WebRTCConnection(deviceId, socket, path)
   this._bufferedMessages = [];
 
   this._timeout = setInterval(this.sendRTCSignalingMessage.bind(this, ''), 2000);
-};
+}
 
 WebRTCConnection.prototype = {
   _close: function()
@@ -107,32 +106,38 @@ WebRTCConnection.prototype = {
 
   _onDataChannelOpen: function(channel)
   {
-    console.error("DATA CHANNEL OPEN!");
+    console.info("Data channel open");
     if (this._closing) {
       channel.close();
       return;
     }
     this._dataChannel = channel;
-    this.onopen();
+    if (this.onopen)
+      this.onopen();
   },
 
   _onDataChannelClose: function()
   {
     this._dataChannel = null;
-    this.onclose();
+    if (this.onclose)
+      this.onclose();
     this._close();
   },
 
   _onDataChannelError: function()
   {
-    this.onclose();
+    if (this.onerror)
+      this.onerror();
+    if (this.onclose)
+      this.onclose();
     this._close();
   },
 
   _onDataChannelMessage: function(event)
   {
     var data = /** @type {string} */ (event.data);
-    this.onmessage(data);
+    if (this.onmessage)
+      this.onmessage(data);
   },
 
   sendMessage: function(message)
@@ -144,7 +149,6 @@ WebRTCConnection.prototype = {
 
   _sendSignalingMessage: function(messageObject)
   {
-    //console.error(JSON.stringify(messageObject));
     if (this._bufferedMessages)
       this._bufferedMessages.push(messageObject);
     else
@@ -173,7 +177,6 @@ WebRTCConnection.prototype = {
       return;
     if (!message)
       return;
-    console.error("GOT SIGNALING!", message);
     var messageList;
     try {
       messageList = JSON.parse(message);
@@ -186,7 +189,7 @@ WebRTCConnection.prototype = {
 
   _processSignalingMessage: function(messageObject)
   {
-    console.error('_processSignalingMessage!', JSON.stringify(messageObject));
+    console.log('Incoming signaling:', JSON.stringify(messageObject));
 
     if (messageObject.type == "close") {
       this._close();

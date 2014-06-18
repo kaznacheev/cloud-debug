@@ -127,8 +127,9 @@ DebuggerProxy.augmentTargetInfo = function(respond, targets) {
     var frontendUrl = DebuggerProxy.FRONTEND_URL.replace("{REV}", versionInfo["WebKit-Revision"]);
     respond(targets.map(function(target) {
       if (!target.attached) {
-        target.devtoolsFrontendUrl = frontendUrl;
-        target.webSocketDebuggerUrl = "ws://devtools/page/" + target.id;
+        var debugPath = "webrtc/" + target.id;
+        target.devtoolsFrontendUrl = frontendUrl + "?ws=" + debugPath;
+        target.webSocketDebuggerUrl = "ws://" + debugPath;
       }
       return target;
     }));

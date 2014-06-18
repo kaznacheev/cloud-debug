@@ -131,10 +131,8 @@ Client.receivedTargets = function(targetsDiv, deviceId, socket, targets) {
         return span;
       }
 
-      if (!target.attached) {
-        var frontendUrl = target.devtoolsFrontendUrl + '?ws=' + target.id;
-        createActionLink('inspect', Client.inspect.bind(null, deviceId, socket, target.id, frontendUrl));
-      }
+      if (!target.attached)
+        createActionLink('inspect', Client.inspect.bind(null, deviceId, socket, target));
 
       function addJsonAction(action) {
         createActionLink(action, User.queryBrowser.bind(null, deviceId, socket, action + '/' + target.id));
@@ -147,9 +145,9 @@ Client.receivedTargets = function(targetsDiv, deviceId, socket, targets) {
   }
 };
 
-Client.inspect = function(deviceId, socket, targetId, frontendUrl) {
+Client.inspect = function(deviceId, socket, target) {
     chrome.tabs.create({
-      url: 'frontend.html?deviceId=' + deviceId + '&socket=' + socket + '&path=' + targetId
+      url: 'frontend.html?deviceId=' + deviceId + '&socket=' + socket + '&target=' + target.id + '&frontend=' + encodeURIComponent(target.devtoolsFrontendUrl)
     });
 };
 
