@@ -1,0 +1,33 @@
+{
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv9irA+H28z4ilqCZegHd28J253gAcSlcgPgBqVlp+WrcHCMw1wdsaKgXeR/PELch9dqk2CZyZ6EdkpeRxdqSkQFI1CO8+/jqEYtHqTNW/97TJP+7LCD+6gHSGhVcHqJBzQm+N+OdH8aS1VuMo++B+wfLpIxrpPaLd+nbvMofHg5BYbRXDDcyTArmUsJ13X5iAvmdhIpcCCqCNpYjVYVUQD2aVQhIYHQLUX6WH9Aq6oWO+u+RqAMcZSua0jtwEcDSRsUDmv7Zzn7mP6K2hqxsIH7laJxqKCi2YhRhmKRjFo7psWJXbQP7J6ewXYSYlXXENadGs7ZbbN8ioe9JuMqkjQIDAQAB",
+  "name": "WebRTC DevTools Extender",
+  "version": "0.1.0",
+  "manifest_version": 2,
+  "description": "WebRTC DevTools Bridge",
+  "permissions": [
+    "identity",
+    "storage",
+    "http://*.appspot.com/",
+    "https://*.google.com/",
+    "https://www.googleapis.com/"
+  ],
+  "app": {
+    "background": {
+      "scripts": ["js/background.js"]
+    }
+  },
+  "oauth2": {
+    "client_id": "852539952535-rkb0a2amc2dob62eois0cqv7pd3i2u6e.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/clouddevices"
+    ]
+  },
+  "sockets": {
+    "tcp": {
+      "connect": ""
+    },
+    "tcpServer": {
+      "listen": ""
+    }
+  }
+}
