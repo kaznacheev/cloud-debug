@@ -8,31 +8,25 @@ TestDevice.start = function() {
   TestDevice._signalingHandler.onclose = TestDevice._onClientConnectionClose;
 
   Device.start(
-      TestDevice._handleCommand,
+      TestDevice.handleCommand,
+      TestDevice.getDeviceState,
       TestDevice.onStart,
       function() { console.error('Cannot initialize test device'); });
 };
 
+TestDevice.SOCKET_LIST = "chrome_devtools_remote";
+
 TestDevice.onStart = function() {
   console.log('Initialized test device');
-  var patch = {
-    "state": {
-      "base": {
-        "vendorState": {
-          "value": [
-            {
-              "name": "sockets",
-              "stringValue": "chrome_devtools_remote"
-            }
-          ]
-        }
-      }
-    }
-  };
+};
 
-  Device.patchVendorState(patch, function() {
-    console.log('Patched device state');
-  });
+TestDevice.getDeviceState = function() {
+  var state = {
+    "sockets": TestDevice.SOCKET_LIST
+  };
+  if (TestDevice._signalingHandler.hasPendingSignaling())
+    state.hasPendingSignaling = "true";
+  return state;
 };
 
 TestDevice.stop = function() {
@@ -40,7 +34,7 @@ TestDevice.stop = function() {
   TestDevice._signalingHandler.stop();
 };
 
-TestDevice._handleCommand = function(name, parameters, patchResultsFunc) {
+TestDevice.handleCommand = function(name, parameters, patchResultsFunc) {
   if (name != "base._connect") {
     console.error("Unknown device command: " + name);
     return;

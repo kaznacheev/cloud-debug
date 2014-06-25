@@ -28,6 +28,10 @@ WebRTCServerSocket.SignalingHandler.prototype = {
     this._buffer = [];
   },
 
+  hasPendingSignaling: function() {
+    return !!this._buffer.length;
+  },
+
   processIncoming: function(message, respondFunc) {
     var serverError = console.error.bind(console, "Server signaling:");
 

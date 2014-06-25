@@ -23,7 +23,15 @@ WebRTCSocket.prototype = {
       return;
     this._closing = true;
     console.info(this._logPrefix, 'Destroyed');
-    this._doClose();
+
+    if (this.onclose)
+      this.onclose();
+
+    if (this._dataChannel)
+      this._dataChannel.close();
+
+    if (this._peerConnection)
+      this._peerConnection.close();
   },
 
   send: function(data) {
@@ -117,20 +125,6 @@ WebRTCSocket.prototype = {
       this.onmessage(event.data);
   },
 
-  _doClose: function() {
-    if (this.onclose)
-      this.onclose();
-
-    if (this._dataChannel) {
-      this._dataChannel.close();
-      this._dataChannel = null;
-    }
-    if (this._peerConnection) {
-      this._peerConnection.close();
-      this._peerConnection = null;
-    }
-  },
-
   _success: function(message) {
     return console.debug.bind(console, this._logPrefix, message + ' OK');
   },
@@ -165,13 +159,11 @@ WebRTCClientSocket.SignalingHandler = function(socket, exchangeSignalingFunc) {
 
   this._exchangeSignalingFunc = exchangeSignalingFunc;
   this._buffer = [];
-  this._interval = setInterval(this._exchangeSignaling.bind(this, ''), 1000);
 };
 
 WebRTCClientSocket.SignalingHandler.prototype = {
-  stop: function()  {
-    this._exchangeSignalingFunc(JSON.stringify([WebRTCSocket.CLOSE_SIGNAL]), function() {});
-    clearInterval(this._interval);
+  sendCloseSignal: function()  {
+    this._exchangeSignalingFunc(JSON.stringify([WebRTCSocket.CLOSE_SIGNAL]));
   },
 
   enqueue: function(messageObject) {
@@ -187,13 +179,19 @@ WebRTCClientSocket.SignalingHandler.prototype = {
     }
   },
 
-  _exchangeSignaling: function(message) {
-    this._exchangeSignalingFunc(message, this._processIncoming.bind(this));
+  poll: function() {
+    if (!this._buffer)
+      this._exchangeSignaling('');
   },
 
-  _processIncoming: function(message) {
-    if (!message)
-      return;
+  _exchangeSignaling: function(message) {
+    this._exchangeSignalingFunc(
+        message,
+        this._onSignalingResponse.bind(this),
+        this._onSignalingError.bind(this));
+  },
+
+  _onSignalingResponse: function(message) {
     var messageObjects;
     try {
       messageObjects = JSON.parse(message);
@@ -219,5 +217,10 @@ WebRTCClientSocket.SignalingHandler.prototype = {
     } catch (e) {
       console.error(this._socket._logPrefix, "Error while processing: ", message, e.stack);
     }
+  },
+
+  _onSignalingError: function() {
+    console.warn(this._socket._logPrefix, 'signaling not processed by the server');
+    this._socket.close();
   }
 };

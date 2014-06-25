@@ -26,11 +26,11 @@ Device.createDraft = function(name) {
   };
 };
 
-Device.start = function(commandHandler, successCallback, errorCallback) {
+Device.start = function(commandHandler, deviceStateGetter, successCallback, errorCallback) {
   User.requestDevices(function(response) {
     chrome.storage.local.get(function (items) {
       function started() {
-        Device.requestCommands(commandHandler);
+        Device.poll(commandHandler, deviceStateGetter);
         successCallback();
       }
 
@@ -154,15 +154,24 @@ Device.unregister = function() {
   });
 };
 
-Device.requestCommands = function(commandHandler) {
+Device.poll = function(commandHandler, deviceStateGetter) {
   Device.request(
       'GET',
       'commands?state=queued&&deviceId=' + Device.STATE.id,
       null,
-      Device.receivedCommands.bind(null, commandHandler));
+      Device.receivedCommands.bind(null, commandHandler, deviceStateGetter));
+
+  var deviceState = deviceStateGetter();
+  var deviceStateJson = JSON.stringify(deviceState);
+  if (!Device._cachedDeviceStateJson || Device._cachedDeviceStateJson != deviceStateJson) {
+    Device._cachedDeviceStateJson = deviceStateJson;
+    Device.patchVendorState(deviceState, function() {
+      console.log("Patched device state: " + deviceStateJson);
+    });
+  }
 };
 
-Device.receivedCommands = function(commandHandler, commands) {
+Device.receivedCommands = function(commandHandler, deviceStateGetter, commands) {
   if ('commands' in commands) {
     commands.commands.forEach(function (command) {
       try {
@@ -176,7 +185,7 @@ Device.receivedCommands = function(commandHandler, commands) {
     });
   }
 
-  Device.TIMEOUT = setTimeout(Device.requestCommands, 1000, commandHandler);
+  Device.TIMEOUT = setTimeout(Device.poll, 1000, commandHandler, deviceStateGetter);
 };
 
 Device.respondToCommand = function(id, results) {
@@ -240,5 +249,25 @@ Device.request = function(method, path, postData, successCallback, errorCallback
 };
 
 Device.patchVendorState = function(state, callback) {
-  Device.request('PATCH', 'devices/' + Device.STATE.id, state, callback);
+  var value = [];
+  for (var key in state) {
+    if (!state.hasOwnProperty(key))
+      continue;
+    value.push({
+      "name": key,
+      "stringValue": state[key]
+    });
+  }
+
+  var patch = {
+    "state": {
+      "base": {
+        "vendorState": {
+          "value": value
+        }
+      }
+    }
+  };
+
+  Device.request('PATCH', 'devices/' + Device.STATE.id, patch, callback);
 };

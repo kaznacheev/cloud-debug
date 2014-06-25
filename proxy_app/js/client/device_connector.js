@@ -177,7 +177,7 @@ DeviceConnector.Connection.prototype = {
     }
     delete this._registry[this._id];
     this._webrtcConnection.close();
-    this._signalingHandler.stop();
+    this._signalingHandler.sendCloseSignal();
   },
 
   isConnected: function () {
@@ -207,15 +207,16 @@ DeviceConnector.Connection.prototype = {
 
   update: function(resource) {
     this._resource = resource;
-    var sockets;
+    var vendorState = {};
     try {
       resource.state.base.vendorState.value.forEach(function(item) {
-        if (item.name == "sockets")
-          sockets = item.stringValue;
+        vendorState[item.name] = item.stringValue;
       });
     } catch(e) {
     }
-    this._sockets = (sockets || '').split(',');
+    this._sockets = (vendorState.sockets || '').split(',');
+    if (vendorState.hasPendingSignaling)
+      this._signalingHandler.poll();
   },
 
   sendOpen: function(clientId, socketName) {
@@ -230,7 +231,7 @@ DeviceConnector.Connection.prototype = {
     this._send(clientId, DeviceConnector.Connection.DATA, data);
   },
 
-  _exchangeSignaling: function(message, callback) {
+  _exchangeSignaling: function(message, successCallback, errorCallback) {
     User.sendCommand(
         this._id,
         "base._connect",
@@ -238,8 +239,14 @@ DeviceConnector.Connection.prototype = {
           '_message': message
         },
         function(response) {
-          callback(response.results && response.results._response);
-        });
+          if (response.state == "done" && response.results) {
+            if (successCallback)
+              successCallback(response.results._response);
+          } else if (errorCallback) {
+            errorCallback();
+          }
+        },
+        errorCallback);
   },
 
   _onConnectionOpen: function() {
