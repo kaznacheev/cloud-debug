@@ -149,7 +149,7 @@ Device.unregister = function() {
           chrome.storage.local.remove(Device.STATE_KEY);
         },
         function(status) {
-          console.log('Could not deleted device ' + deviceId + ', status=' + status);
+          console.error('Could not deleted device ' + deviceId + ', status=' + status);
         });
   });
 };

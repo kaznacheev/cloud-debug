@@ -10,13 +10,19 @@ User.request = function(
 
   chrome.identity.getAuthToken(
       { 'interactive': true },
-      XHR.requestWithToken.bind(
-          null,
-          method,
-          XHR.getCloudDevicesUrl(path), 
-          postData,
-          successCallback,
-          errorCallback));
+      function(token) {
+        if (chrome.runtime.lastError) {
+          console.error(chrome.runtime.lastError.message);
+          return;
+        }
+        XHR.requestWithToken(
+            method,
+            XHR.getCloudDevicesUrl(path),
+            postData,
+            successCallback,
+            errorCallback,
+            token);
+      });
 };
 
 User.requestDevices = function(callback) {

@@ -1,12 +1,25 @@
-function WebRTCServerConnection(offer, sendSignalingFunc) {
+function WebRTCServerConnection(serverConfig, offer, sendSignalingFunc) {
   this._logger = console;
   this._logger.info('Server connection created');
 
   this._sendSignalingMessage = sendSignalingFunc;
 
-  this._peerConnection = new webkitRTCPeerConnection(null, {});
+  this._peerConnection = new webkitRTCPeerConnection(serverConfig, {});
   this._peerConnection.onicecandidate = this._onIceCandidate.bind(this);
-  this._peerConnection.ondatachannel = this._onDataChannel.bind(this);
+  this._peerConnection.oniceconnectionstatechange = function() {
+    console.info('Server ICE connection state: ' + event.currentTarget.iceConnectionState);
+  }.bind(this);
+
+//  this._peerConnection.ondatachannel = this._onDataChannel.bind(this);
+
+  var dataChannel = this._peerConnection.createDataChannel("devtools", {negotiated: true, id: 1});
+  dataChannel.onopen = this._onDataChannelOpen.bind(this);
+  dataChannel.onclose = this._onDataChannelClose.bind(this);
+  dataChannel.onerror = this._onDataChannelError.bind(this);
+  dataChannel.onmessage = this._onDataChannelMessage.bind(this);
+
+
+  this._dataChannel = dataChannel;
 
   this._peerConnection.setRemoteDescription(
       new RTCSessionDescription(offer),
@@ -52,7 +65,7 @@ WebRTCServerConnection.prototype = {
   },
 
   _onAnswerSuccess: function(answer) {
-    this._logger.info("createAnswer OK");
+    this._logger.debug("createAnswer OK");
     if (this._closing)
       return;
     this._peerConnection.setLocalDescription(
@@ -66,37 +79,38 @@ WebRTCServerConnection.prototype = {
     if (this._closing)
       return;
     if (event.candidate) {
-      this._logger.info('Server sent ICE candidate to client', event.candidate.candidate);
+      this._logger.debug('Server sent ICE candidate to client', event.candidate.candidate);
       this._sendSignalingMessage(event.candidate);
     } else {
-      this._logger.info('Server received the last ICE candidate.');
+      this._logger.debug('Server received the last ICE candidate.');
     }
   },
 
-  _onDataChannel: function(event) {
-    this._logger.info('Server data channel created');
-    if (this._closing)
-      return;
-    var channel = event.channel;
-    channel.onopen = this._onDataChannelOpen.bind(this, channel);
-    channel.onclose = this._onDataChannelClose.bind(this);
-    channel.onerror = this._onDataChannelError.bind(this);
-    channel.onmessage = this._onDataChannelMessage.bind(this);
-  },
+//  _onDataChannel: function(event) {
+//    this._logger.info('Server data channel created');
+//    if (this._closing)
+//      return;
+//    var channel = event.channel;
+//    channel.onopen = this._onDataChannelOpen.bind(this, channel);
+//    channel.onclose = this._onDataChannelClose.bind(this);
+//    channel.onerror = this._onDataChannelError.bind(this);
+//    channel.onmessage = this._onDataChannelMessage.bind(this);
+//  },
 
-  _onDataChannelOpen: function(channel)
+  _onDataChannelOpen: function()
   {
-    this._logger.log('Server data channel open');
+    this._logger.info('Server data channel open');
     if (this._closing) {
-      channel.close();
+      this._dataChannel.close();
       return;
     }
-    this._dataChannel = channel;
+    if (this.onopen)
+      this.onopen();
   },
 
   _onDataChannelClose: function()
   {
-    this._logger.log('Server data channel closed');
+    this._logger.info('Server data channel closed');
     this._dataChannel = null;
     this.close();
   },
@@ -109,18 +123,16 @@ WebRTCServerConnection.prototype = {
 
   _onDataChannelMessage: function(event)
   {
-    this._logger.info("Server data channel received", event.data);
+    this._logger.debug("Server data channel received", event.data);
     if (this.onmessage)
       this.onmessage(event.data);
   },
 
   _success: function(message) {
-    return this._logger.info.bind(this._logger, message + ' OK');
+    return this._logger.debug.bind(this._logger, message + ' OK');
   },
 
   _failure: function(message) {
     return this._logger.error.bind(this._logger, message + ' FAILED');
-  },
-
-  __proto__: Object.prototype
+  }
 };

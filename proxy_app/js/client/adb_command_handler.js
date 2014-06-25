@@ -11,7 +11,7 @@ AdbCommandHandler.LENGTH_MARKER_SIZE = 4;
 AdbCommandHandler.RESULT_SIZE = 4;
 
 AdbCommandHandler._parseLengthMarker = function(buffer) {
-  return parseInt(arrayBufferToString(buffer, 0, AdbCommandHandler.LENGTH_MARKER_SIZE), 16);
+  return parseInt(Uint8ArrayToString(new Uint8Array(buffer, 0, AdbCommandHandler.LENGTH_MARKER_SIZE)), 16);
 };
 
 AdbCommandHandler._formatLengthMarker = function(size) {
@@ -55,14 +55,13 @@ AdbCommandHandler.prototype = {
     if (this._buffer.byteLength < packetSize)
       return;
 
-    var command = arrayBufferToString(this._buffer, AdbCommandHandler.LENGTH_MARKER_SIZE, commandSize);
-    
+    var command = Uint8ArrayToString(
+        new Uint8Array(this._buffer, AdbCommandHandler.LENGTH_MARKER_SIZE, commandSize));
+
     if (packetSize == this._buffer.byteLength)
       delete this._buffer;
     else
       this._buffer = this._buffer.slice(packetSize);
-
-    //console.log("Processing " + commandSize + " bytes: " + command);
 
     this._processCommand(command);
   },
@@ -173,20 +172,10 @@ AdbCommandHandler.prototype = {
   },
 
   _reply: function(status, message) {
-    var array;
-    if (message && message.length) {
-      var headerSize = AdbCommandHandler.RESULT_SIZE + AdbCommandHandler.LENGTH_MARKER_SIZE;
-      array = new Uint8Array(headerSize + message.length);
-      array.set(stringToUint8Array(AdbCommandHandler._formatLengthMarker(message.length)),
-                AdbCommandHandler.RESULT_SIZE);
-      array.set(stringToUint8Array(message), headerSize);
-    } else {
-      array = new Uint8Array(AdbCommandHandler.RESULT_SIZE);
-    }
-    array.set(stringToUint8Array(status), 0);
-    this._clientSocket.send(array.buffer);
-  },
-
-  __proto__: Object.prototype
+    var packet = status;
+    if (message && message.length)
+      packet += AdbCommandHandler._formatLengthMarker(message.length) + message;
+    this._clientSocket.send(stringToUint8Array(packet).buffer);
+  }
 };
 

@@ -11,29 +11,6 @@ TestDevice.start = function() {
 
 TestDevice.onStart = function() {
   console.log('Initialized test device');
-
-//  var time = Date.now() / 1000;
-//  var state = {
-//    "timeMs": time,
-//    "patches": [
-//      {
-//        "timeMs": time,
-//        "patch": {
-//          "version": "1.0",
-//          "base": {
-//            "vendorState": {
-//              "value": [
-//                {
-//                  "name": "sockets",
-//                  "stringValue": "chrome_devtools_remote"
-//                }
-//              ]
-//            }
-//          }
-//        }
-//      }
-//    ]
-//  };
   var patch = {
     "state": {
       "base": {
@@ -56,8 +33,8 @@ TestDevice.onStart = function() {
 
 TestDevice.stop = function() {
   Device.stop();
-  if (this._connection)
-    this._connection.close();
+  if (TestDevice._connection)
+    TestDevice._connection.close();
 };
 
 TestDevice._pendingOutboundSignaling = [];
@@ -95,14 +72,21 @@ TestDevice._handleCommand = function(name, parameters, patchResultsFunc) {
 
     for (var i = 0; i != messageList.length; i++) {
       var messageObj = messageList[i];
+      console.debug("Server received signaling message", JSON.stringify(messageObj));
 
-      if (messageObj.type == "offer") {
+      if (messageObj.iceServers) {
+        this._iceServersConfig = messageObj;
+      } else if (messageObj.type == "offer") {
         if (TestDevice._connection) {
           serverError("Connection already open");
           respond([WebRTCServerConnection.CLOSE_SIGNAL]);
           return;
         } else {
-          TestDevice._connection = new WebRTCServerConnection(messageObj, bufferOutboundSignaling);
+          TestDevice._connection = new WebRTCServerConnection(
+              this._iceServersConfig,
+              messageObj,
+              bufferOutboundSignaling);
+          delete this._iceServersConfig;
           TestDevice._connection.onmessage = TestDevice._onConnectionMessage;
           TestDevice._connection.onclose = TestDevice._onConnectionClose;
         }
@@ -118,6 +102,8 @@ TestDevice._handleCommand = function(name, parameters, patchResultsFunc) {
           TestDevice._connection.addIceCandidate(messageObj);
         else
           serverError("Cannot find the connection to add ICE candidate");
+      } else {
+        serverError("Unknown signaling message: " + JSON.stringify(messageObj));
       }
     }
   }
@@ -151,7 +137,7 @@ TestDevice._onConnectionMessage = function(buffer) {
           TestDevice._tunnels[clientId] = socket;
           socket.onclose = TestDevice._onTunnelClosedByDevice.bind(null, clientId);
           socket.onmessage = TestDevice._onTunnelMessage.bind(null, clientId);
-          console.log('Created server side socket for ' + clientId);
+          console.debug('Created server side socket for ' + clientId);
         } else {
           TestDevice.send(clientId, DeviceConnector.Connection.OPEN_FAIL);
         }
@@ -168,7 +154,7 @@ TestDevice._onConnectionMessage = function(buffer) {
       break;
 
     case DeviceConnector.Connection.DATA:
-      console.log("Forwarded data from " + clientId, arrayBufferToString(DeviceConnector.Connection.parsePacketPayload(buffer)));
+      console.debug("Forwarded " + buffer.byteLength + " bytes to from " + clientId);
       if (tunnel)
         tunnel.send(DeviceConnector.Connection.parsePacketPayload(buffer));
       else
@@ -182,13 +168,13 @@ TestDevice._onConnectionMessage = function(buffer) {
 };
 
 TestDevice._onTunnelClosedByDevice = function(clientId) {
-  console.log('Server side socket for ' + clientId + ' closed by device');
+  console.debug('Closed server side socket for ' + clientId + ' by device');
   TestDevice.send(clientId, DeviceConnector.Connection.CLOSE);
   delete TestDevice._tunnels[clientId];
 };
 
 TestDevice._onTunnelClosedByClient = function(clientId) {
-  console.log('Closed server side socket for ' + clientId);
+  console.debug('Closed server side socket for ' + clientId + ' by client');
   delete TestDevice._tunnels[clientId];
 };
 
@@ -197,5 +183,5 @@ TestDevice._onTunnelMessage = function(clientId, data) {
 };
 
 TestDevice.send = function(clientId, type, opt_payload) {
-  this._connection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
+  TestDevice._connection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
 };

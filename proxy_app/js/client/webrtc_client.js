@@ -4,12 +4,20 @@ function WebRTCClientConnection(serverConfig, signalingFunc)
   this._signalingFunc = signalingFunc;
   this._peerConnection = new webkitRTCPeerConnection(serverConfig, {});
   this._peerConnection.onicecandidate = this._onIceCandidate.bind(this);
+  this._peerConnection.oniceconnectionstatechange = function(event) {
+    console.info('Client ICE connection state: ' + event.currentTarget.iceConnectionState);
+  };
 
-  var dataChannel = this._peerConnection.createDataChannel("devtools");
-  dataChannel.onopen = this._onDataChannelOpen.bind(this, dataChannel);
+  var dataChannel = this._peerConnection.createDataChannel("devtools", {negotiated: true, id: 1});
+  dataChannel.onopen = this._onDataChannelOpen.bind(this);
   dataChannel.onclose = this._onDataChannelClose.bind(this);
   dataChannel.onerror = this._onDataChannelError.bind(this);
   dataChannel.onmessage = this._onDataChannelMessage.bind(this);
+
+  this._dataChannel = dataChannel;
+
+  if (serverConfig)
+    this._sendSignalingMessage(serverConfig);
 
   this._peerConnection.createOffer(this._onOfferSuccess.bind(this), this._onOfferError.bind(this));
 
@@ -66,22 +74,23 @@ WebRTCClientConnection.prototype = {
     if (this._closing)
       return;
     if (event.candidate) {
+      console.debug('Client sent ICE candidate to server', event.candidate.candidate);
       this._sendSignalingMessage(event.candidate);
     } else {
       // End of ICE candidates
+      console.debug('Client received the last ICE candidate.');
       this._doSendSignalingMessage(JSON.stringify(this._bufferedSignaling));
       delete this._bufferedSignaling;
     }
   },
 
-  _onDataChannelOpen: function(channel)
+  _onDataChannelOpen: function()
   {
     console.info("Client data channel open");
     if (this._closing) {
-      channel.close();
+      this._dataChannel.close();
       return;
     }
-    this._dataChannel = channel;
     if (this.onopen)
       this.onopen();
   },
@@ -144,7 +153,7 @@ WebRTCClientConnection.prototype = {
 
   _processSignalingMessage: function(messageObject)
   {
-    console.log('Client received signaling:', JSON.stringify(messageObject));
+    console.debug('Client received signaling:', JSON.stringify(messageObject));
 
     if (messageObject.type == "close") {
       this.close();

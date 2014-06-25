@@ -1,6 +1,5 @@
 function DeviceConnector() {
   this._connections = {};
-  this._deviceIds = [];
 
   var xhr = new XMLHttpRequest();
   xhr.open("GET", DeviceConnector.ICE_CONFIG_URL);
@@ -10,7 +9,6 @@ function DeviceConnector() {
       this._start.bind(this),
       this._start.bind(this, null));
   xhr.send();
-//  this._start(null);
 }
 
 DeviceConnector.ICE_CONFIG_URL = "http://computeengineondemand.appspot.com/turn?username=28230128&key=4080218913";
@@ -37,15 +35,17 @@ DeviceConnector.prototype = {
     if (this._timeout)
       clearTimeout(this._timeout);
 
-    this._deviceIds.forEach(function(id) {
+    this.getDeviceIds().forEach(function(id) {
       this._connections[id].close();
     }.bind(this));
-
-    this._deviceIds = [];
   },
 
   getDeviceIds: function () {
-    return this._deviceIds;
+    var ids = [];
+    for (var id in this._connections)
+      if (this._connections.hasOwnProperty(id))
+        ids.push(id);
+    return ids;
   },
 
   getDeviceConnection: function (id) {
@@ -63,18 +63,20 @@ DeviceConnector.prototype = {
       return deviceResource.id;
     });
 
+    var oldDeviceIds = this.getDeviceIds();
+
     newDeviceIds.forEach(function(id) {
-      if (this._deviceIds.indexOf(id) < 0)
+      if (oldDeviceIds.indexOf(id) < 0) {
         new DeviceConnector.Connection(this._connections, id, this._iceServersConfig);
+      }
     }.bind(this));
 
-    this._deviceIds.forEach(function(id) {
-      if (newDeviceIds.indexOf(id) < 0)
+    oldDeviceIds.forEach(function(id) {
+      if (newDeviceIds.indexOf(id) < 0) {
         this._connections[id].close();
+      }
     }.bind(this));
 
-    this._deviceIds = newDeviceIds;
-    
     devicesResource.forEach(function(deviceResource) {
       this._connections[deviceResource.id].update(deviceResource);
     }.bind(this));
@@ -237,6 +239,7 @@ DeviceConnector.Connection.prototype = {
   },
 
   _onConnectionOpen: function() {
+    console.info('Device connector is ready');
     this._connected = true;
   },
 
