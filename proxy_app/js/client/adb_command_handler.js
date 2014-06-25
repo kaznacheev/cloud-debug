@@ -77,7 +77,7 @@ AdbCommandHandler.prototype = {
           var state = deviceConnection.isConnected() ? "device" : "offline";
           return deviceId + "\t" + state;
         }.bind(this));
-        this._replyOKAY(lines.join("\n"));
+        this._replyOKAY(lines.join("\n")+ "\n"); // Empty payload seems to hang up the client.
         return;
       }
 

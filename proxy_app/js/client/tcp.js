@@ -107,8 +107,14 @@ TCP.Socket.prototype = {
   },
 
   send: function(data) {
-    // TODO: check results in the callback.
-    chrome.sockets.tcp.send(this._id, data, function() {});
+    chrome.sockets.tcp.send(this._id, data, function(sendInfo) {
+      if (sendInfo.resultCode < 0) {
+        console.error('Send error '+ sendInfo.resultCode + ' on ' + this._id);
+      } else if (sendInfo.bytesSent != data.byteLength)
+        console.error('Sent ' + sendInfo.bytesSent + ' out of ' + data.byteLength + ' bytes to ' + this._id);
+      else
+        console.debug('Sent ' + data.byteLength + ' bytes to ' + this._id);
+    }.bind(this));
   },
 
   _onClose: function() {
@@ -181,12 +187,14 @@ TCP.Server.prototype = {
     if (acceptInfo.socketId != this._socketId)
       return;
     console.debug('Accepted connection on ' + acceptInfo.socketId + ' from ', acceptInfo.clientSocketId);
-    chrome.sockets.tcp.setPaused(acceptInfo.clientSocketId, false, function() {});
     var socket = new TCP.Socket(acceptInfo.clientSocketId, this);
     try {
       new this._handlerClass(this._handlerContext, socket);
     } catch (e) {
       console.error(e.stack);
+      socket.close();
+      return;
     }
+    chrome.sockets.tcp.setPaused(acceptInfo.clientSocketId, false, function() {});
   }
 };
