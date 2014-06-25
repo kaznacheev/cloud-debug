@@ -96,13 +96,16 @@ DeviceConnector.Connection = function(registry, id, iceServersConfig) {
 
   this._registry[this._id] = this;
 
-  this._webrtcConnection = new WebRTCClientConnection(
-      iceServersConfig,
-      this._sendSignalingMessage.bind(this));
+  this._webrtcConnection = new WebRTCClientSocket();
   this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
-  this._webrtcConnection.onmessage = this._onMessage.bind(this);
+  this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
   this._webrtcConnection.onclose = this.close.bind(this);
+  
+  this._signalingHandler = new WebRTCClientSocket.SignalingHandler(
+      this._webrtcConnection, this._exchangeSignaling.bind(this));
 
+  this._webrtcConnection.connect(iceServersConfig);
+  
   this._pendingOpen = {};
   this._tunnels = {};
 
@@ -174,6 +177,7 @@ DeviceConnector.Connection.prototype = {
     }
     delete this._registry[this._id];
     this._webrtcConnection.close();
+    this._signalingHandler.stop();
   },
 
   isConnected: function () {
@@ -226,7 +230,7 @@ DeviceConnector.Connection.prototype = {
     this._send(clientId, DeviceConnector.Connection.DATA, data);
   },
 
-  _sendSignalingMessage: function(message, callback) {
+  _exchangeSignaling: function(message, callback) {
     User.sendCommand(
         this._id,
         "base._connect",
@@ -243,7 +247,7 @@ DeviceConnector.Connection.prototype = {
     this._connected = true;
   },
 
-  _onMessage: function(buffer) {
+  _onConnectionMessage: function(buffer) {
     var clientId = DeviceConnector.Connection.parseClientId(buffer);
     var type = DeviceConnector.Connection.parsePacketType(buffer);
 

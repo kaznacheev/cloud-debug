@@ -13,20 +13,26 @@ onload = function() {
   }
 
   setClickHandler('client-start', function() {
+    if (connector)
+      return;
     connector = new DeviceConnector();
     proxyServer = createProxyServer(connector);
   });
 
   setClickHandler('client-start-loopback', function() {
+    if (connector)
+      return;
     connector = new TestDeviceConnector();
     proxyServer = createProxyServer(connector);
   });
 
   setClickHandler('client-stop', function() {
-    proxyServer.close();
-    proxyServer = null;
+    if (!connector)
+      return;
     connector.stop();
     connector = null;
+    proxyServer.close();
+    proxyServer = null;
   });
 
   setClickHandler('server-start', TestDevice.start);

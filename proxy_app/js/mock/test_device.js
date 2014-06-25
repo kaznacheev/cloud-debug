@@ -3,6 +3,10 @@ var TestDevice = {};
 TestDevice.start = function() {
   TestDevice._tunnels = {};
 
+  TestDevice._signalingHandler = new WebRTCServerSocket.SignalingHandler();
+  TestDevice._signalingHandler.onaccept = TestDevice._onClientConnectionAccept;
+  TestDevice._signalingHandler.onclose = TestDevice._onClientConnectionClose;
+
   Device.start(
       TestDevice._handleCommand,
       TestDevice.onStart,
@@ -33,93 +37,38 @@ TestDevice.onStart = function() {
 
 TestDevice.stop = function() {
   Device.stop();
-  if (TestDevice._connection)
-    TestDevice._connection.close();
+  TestDevice._signalingHandler.stop();
 };
 
-TestDevice._pendingOutboundSignaling = [];
-
 TestDevice._handleCommand = function(name, parameters, patchResultsFunc) {
-  var serverError = console.error.bind(console);
-
   if (name != "base._connect") {
-    serverError("Unknown device command: " + name);
+    console.error("Unknown device command: " + name);
     return;
   }
 
-  function respond(messageObject) {
-    patchResultsFunc({
-      '_response': JSON.stringify(messageObject)
-    });
-  }
-
-  function bufferOutboundSignaling(messageObject) {
-    TestDevice._pendingOutboundSignaling.push(messageObject);
-  }
-
-  var message = parameters._message;
-  if (!message) {
-    // Just polling
-  } else {
-    var messageList;
-    try {
-      messageList = JSON.parse(message);
-    } catch (e) {
-      serverError("Cannot parse message", message, e);
-      respond([]);
-      return;
-    }
-
-    for (var i = 0; i != messageList.length; i++) {
-      var messageObj = messageList[i];
-      console.debug("Server received signaling message", JSON.stringify(messageObj));
-
-      if (messageObj.iceServers) {
-        this._iceServersConfig = messageObj;
-      } else if (messageObj.type == "offer") {
-        if (TestDevice._connection) {
-          serverError("Connection already open");
-          respond([WebRTCServerConnection.CLOSE_SIGNAL]);
-          return;
-        } else {
-          TestDevice._connection = new WebRTCServerConnection(
-              this._iceServersConfig,
-              messageObj,
-              bufferOutboundSignaling);
-          delete this._iceServersConfig;
-          TestDevice._connection.onmessage = TestDevice._onConnectionMessage;
-          TestDevice._connection.onclose = TestDevice._onConnectionClose;
-        }
-      } else if (messageObj.type == WebRTCServerConnection.CLOSE_SIGNAL.type) {
-        if (TestDevice._connection) {
-          TestDevice._connection.close();
-          TestDevice._pendingOutboundSignaling = [];  // Erase obsolete messages.
-        } else {
-          serverError("Cannot find the connection to close");
-        }
-      } else if ('candidate' in messageObj) {
-        if (TestDevice._connection)
-          TestDevice._connection.addIceCandidate(messageObj);
-        else
-          serverError("Cannot find the connection to add ICE candidate");
-      } else {
-        serverError("Unknown signaling message: " + JSON.stringify(messageObj));
-      }
-    }
-  }
-
-  respond(TestDevice._pendingOutboundSignaling);
-  TestDevice._pendingOutboundSignaling = [];
+  TestDevice._signalingHandler.processIncoming(
+      parameters._message,
+      function(messageObject) {
+        patchResultsFunc({
+          '_response': JSON.stringify(messageObject)
+        });
+      });
 };
 
-TestDevice._onConnectionClose = function() {
-  delete TestDevice._connection;
-  TCP.Socket.getByOwner(this).forEach(function(socket) {
-    socket.close();
+TestDevice._onClientConnectionAccept = function(connection) {
+  TestDevice._clientConnection = connection;
+  TestDevice._clientConnection.onmessage = TestDevice._onClientConnectionMessage;
+};
+
+TestDevice._onClientConnectionClose = function() {
+  TestDevice._clientConnection = null;
+  console.info('Closing server side tunnels');
+  TCP.Socket.getByOwner(this).forEach(function(tunnel) {
+    tunnel.close();
   });
 };
 
-TestDevice._onConnectionMessage = function(buffer) {
+TestDevice._onClientConnectionMessage = function(buffer) {
   var clientId = DeviceConnector.Connection.parseClientId(buffer);
   var type = DeviceConnector.Connection.parsePacketType(buffer);
 
@@ -135,7 +84,7 @@ TestDevice._onConnectionMessage = function(buffer) {
         if (socket) {
           TestDevice.send(clientId, DeviceConnector.Connection.OPEN);
           TestDevice._tunnels[clientId] = socket;
-          socket.onclose = TestDevice._onTunnelClosedByDevice.bind(null, clientId);
+          socket.onclose = TestDevice._onTunnelClosed.bind(null, clientId, true);
           socket.onmessage = TestDevice._onTunnelMessage.bind(null, clientId);
           console.debug('Created server side socket for ' + clientId);
         } else {
@@ -146,7 +95,7 @@ TestDevice._onConnectionMessage = function(buffer) {
 
     case DeviceConnector.Connection.CLOSE:
       if (tunnel) {
-        tunnel.onclose = TestDevice._onTunnelClosedByClient.bind(null, clientId);
+        tunnel.onclose = TestDevice._onTunnelClosed.bind(null, clientId, false);
         tunnel.close();
       } else {
         console.error("Close: server side socket does not exist for " + clientId);
@@ -167,14 +116,11 @@ TestDevice._onConnectionMessage = function(buffer) {
 
 };
 
-TestDevice._onTunnelClosedByDevice = function(clientId) {
-  console.debug('Closed server side socket for ' + clientId + ' by device');
-  TestDevice.send(clientId, DeviceConnector.Connection.CLOSE);
-  delete TestDevice._tunnels[clientId];
-};
-
-TestDevice._onTunnelClosedByClient = function(clientId) {
-  console.debug('Closed server side socket for ' + clientId + ' by client');
+TestDevice._onTunnelClosed = function(clientId, notifyClient) {
+  console.debug('Closed server side socket for ' + clientId +
+      ' by ' + (notifyClient ? 'device' : 'client'));
+  if (notifyClient)
+    TestDevice.send(clientId, DeviceConnector.Connection.CLOSE);
   delete TestDevice._tunnels[clientId];
 };
 
@@ -183,5 +129,5 @@ TestDevice._onTunnelMessage = function(clientId, data) {
 };
 
 TestDevice.send = function(clientId, type, opt_payload) {
-  TestDevice._connection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
+  TestDevice._clientConnection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
 };

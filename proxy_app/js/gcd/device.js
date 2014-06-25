@@ -43,7 +43,7 @@ Device.start = function(commandHandler, successCallback, errorCallback) {
         })[0];
 
         if (registeredDevice) {
-          console.log('Read cached credentials for device ' + Device.STATE.id);
+          console.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + Device.STATE.id);
           started();
           return;
         }
@@ -55,8 +55,8 @@ Device.start = function(commandHandler, successCallback, errorCallback) {
       chrome.storage.local.remove(Device.STATE_KEY);
 
       var deviceNumbers = deviceList.map(function (device) {
-        var match = device.systemName.match('\\d+$');
-        return match ? Number(match[0]) : -1;
+        var match = device.displayName.match(Device.DEFAULT_NAME + ' \\d+$');
+        return match ? Number(match[0]) : 1;
       });
 
       var deviceName = Device.DEFAULT_NAME;
@@ -68,7 +68,7 @@ Device.start = function(commandHandler, successCallback, errorCallback) {
       Device.register(
           deviceName,
           function (ticket, credentials) {
-            console.log("Registered device " + ticket.deviceDraft.id);
+            console.log("Registered device '" + ticket.deviceDraft.displayName + "' #" + ticket.deviceDraft.id);
             Device.STATE = {
               id: ticket.deviceDraft.id,
               access_token: credentials.access_token,

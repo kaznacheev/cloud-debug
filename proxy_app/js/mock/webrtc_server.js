@@ -1,138 +1,103 @@
-function WebRTCServerConnection(serverConfig, offer, sendSignalingFunc) {
-  this._logger = console;
-  this._logger.info('Server connection created');
-
-  this._sendSignalingMessage = sendSignalingFunc;
-
-  this._peerConnection = new webkitRTCPeerConnection(serverConfig, {});
-  this._peerConnection.onicecandidate = this._onIceCandidate.bind(this);
-  this._peerConnection.oniceconnectionstatechange = function() {
-    console.info('Server ICE connection state: ' + event.currentTarget.iceConnectionState);
-  }.bind(this);
-
-//  this._peerConnection.ondatachannel = this._onDataChannel.bind(this);
-
-  var dataChannel = this._peerConnection.createDataChannel("devtools", {negotiated: true, id: 1});
-  dataChannel.onopen = this._onDataChannelOpen.bind(this);
-  dataChannel.onclose = this._onDataChannelClose.bind(this);
-  dataChannel.onerror = this._onDataChannelError.bind(this);
-  dataChannel.onmessage = this._onDataChannelMessage.bind(this);
-
-
-  this._dataChannel = dataChannel;
-
-  this._peerConnection.setRemoteDescription(
-      new RTCSessionDescription(offer),
-      this._success("setRemoteDescription"),
-      this._failure("setRemoteDescription"));
-
-  this._peerConnection.createAnswer(
-      this._onAnswerSuccess.bind(this),
-      this._failure("createAnswer"),
-      {});
+function WebRTCServerSocket() {
+  WebRTCSocket.call(this, 'Server');
 }
 
-WebRTCServerConnection.CLOSE_SIGNAL = { type: 'close' };
+WebRTCServerSocket.prototype = {
+  connect: function(serverConfig, offer) {
+    WebRTCSocket.prototype.connect.call(this, serverConfig);
 
-WebRTCServerConnection.prototype = {
-  close: function() {
-    if (this._closing)
-      return;
-    this._closing = true;
+    this.setRemoteDescription(offer);
 
-    this._sendSignalingMessage(WebRTCServerConnection.CLOSE_SIGNAL);
-
-    if (this.onclose)
-      this.onclose();
-
-    if (this._dataChannel)
-      this._dataChannel.close();
-
-    if (this._peerConnection)
-      this._peerConnection.close();
+    this._peerConnection.createAnswer(
+        this.setLocalDescription.bind(this),
+        this._onError.bind(this, "createAnswer"),
+        {});
   },
 
-  send: function(data) {
-    if (this._dataChannel)
-      this._dataChannel.send(data);
+  __proto__: WebRTCSocket.prototype
+};
+
+WebRTCServerSocket.SignalingHandler = function() {
+  this._buffer = [];
+};
+
+WebRTCServerSocket.SignalingHandler.prototype = {
+  stop: function() {
+    if (this._webrtcConnection)
+      this._webrtcConnection.close();
+    this._buffer = [];
   },
 
-  addIceCandidate: function(messageObj) {
-    this._peerConnection.addIceCandidate(
-        new RTCIceCandidate(messageObj),
-        this._success("addIceCandidate"),
-        this._failure("addIceCandidate"));
-  },
+  processIncoming: function(message, respondFunc) {
+    var serverError = console.error.bind(console, "Server signaling:");
 
-  _onAnswerSuccess: function(answer) {
-    this._logger.debug("createAnswer OK");
-    if (this._closing)
-      return;
-    this._peerConnection.setLocalDescription(
-        answer,
-        this._success("setLocalDescription"),
-        this._failure("setLocalDescription"));
-    this._sendSignalingMessage(answer);
-  },
-
-  _onIceCandidate: function(event) {
-    if (this._closing)
-      return;
-    if (event.candidate) {
-      this._logger.debug('Server sent ICE candidate to client', event.candidate.candidate);
-      this._sendSignalingMessage(event.candidate);
+    if (!message) {
+      // Just polling
     } else {
-      this._logger.debug('Server received the last ICE candidate.');
+      var messageObjects;
+      try {
+        messageObjects = JSON.parse(message);
+      } catch (e) {
+        serverError("Cannot parse message", message, e);
+        respondFunc([]);
+        return;
+      }
+      try {
+        for (var i = 0; i != messageObjects.length; i++) {
+          var messageObj = messageObjects[i];
+          console.debug("Server signaling: received", JSON.stringify(messageObj));
+
+          if (messageObj.iceServers) {
+            this._iceServersConfig = messageObj;
+          } else if (messageObj.type == "offer") {
+            if (this._webrtcConnection) {
+              serverError("Connection already exists");
+              respondFunc([WebRTCSocket.CLOSE_SIGNAL]);
+              return;
+            } else {
+              this._webrtcConnection = new WebRTCServerSocket();
+              this._webrtcConnection.onclose = this._onConnectionClosed.bind(this, true);
+              this._webrtcConnection.onoutboundsignaling = this._enqueue.bind(this);
+              this._webrtcConnection.connect(this._iceServersConfig, messageObj);
+              delete this._iceServersConfig;
+              this.onaccept(this._webrtcConnection);
+            }
+          } else if (messageObj.type == WebRTCSocket.CLOSE_SIGNAL.type) {
+            if (this._webrtcConnection) {
+              this._webrtcConnection.onclose = this._onConnectionClosed.bind(this, false);
+              this._webrtcConnection.close();
+              this._buffer = [];  // Erase obsolete messages.
+            } else {
+              serverError("Cannot find the connection to close");
+            }
+          } else if ('candidate' in messageObj) {
+            if (this._webrtcConnection)
+              this._webrtcConnection.addIceCandidate(messageObj);
+            else
+              serverError("Cannot find the connection to add ICE candidate");
+          } else {
+            serverError("Unknown signaling message: " + JSON.stringify(messageObj));
+          }
+        }
+      } catch (e) {
+        serverError("Exception while processing", message, e.stack);
+        respondFunc([]);
+        return;
+      }
     }
+    respondFunc(this._buffer);
+    this._buffer = [];
   },
 
-//  _onDataChannel: function(event) {
-//    this._logger.info('Server data channel created');
-//    if (this._closing)
-//      return;
-//    var channel = event.channel;
-//    channel.onopen = this._onDataChannelOpen.bind(this, channel);
-//    channel.onclose = this._onDataChannelClose.bind(this);
-//    channel.onerror = this._onDataChannelError.bind(this);
-//    channel.onmessage = this._onDataChannelMessage.bind(this);
-//  },
-
-  _onDataChannelOpen: function()
-  {
-    this._logger.info('Server data channel open');
-    if (this._closing) {
-      this._dataChannel.close();
-      return;
-    }
-    if (this.onopen)
-      this.onopen();
+  _enqueue: function(messageObject) {
+    if (messageObject)
+      this._buffer.push(messageObject);
   },
 
-  _onDataChannelClose: function()
-  {
-    this._logger.info('Server data channel closed');
-    this._dataChannel = null;
-    this.close();
-  },
-
-  _onDataChannelError: function(error)
-  {
-    this._logger.error('Server data channel error', error.toString());
-    this.close();
-  },
-
-  _onDataChannelMessage: function(event)
-  {
-    this._logger.debug("Server data channel received", event.data);
-    if (this.onmessage)
-      this.onmessage(event.data);
-  },
-
-  _success: function(message) {
-    return this._logger.debug.bind(this._logger, message + ' OK');
-  },
-
-  _failure: function(message) {
-    return this._logger.error.bind(this._logger, message + ' FAILED');
+  _onConnectionClosed: function(sendCloseSignal) {
+    if (sendCloseSignal)
+      this._enqueue(WebRTCServerSocket.CLOSE_SIGNAL);
+    delete this._webrtcConnection;
+    this.onclose();
   }
 };
