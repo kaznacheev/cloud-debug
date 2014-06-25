@@ -25,7 +25,7 @@ DeviceConnector.prototype = {
       this._iceServersConfig.iceServers.push({
         urls: turnServerConfig.uris,
         username: turnServerConfig.username,
-        password: turnServerConfig.password
+        credential: turnServerConfig.password
       });
     }
     this._queryDevices();
