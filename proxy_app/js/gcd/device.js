@@ -55,8 +55,8 @@ Device.start = function(commandHandler, successCallback, errorCallback) {
       chrome.storage.local.remove(Device.STATE_KEY);
 
       var deviceNumbers = deviceList.map(function (device) {
-        var match = device.displayName.match(Device.DEFAULT_NAME + ' \\d+$');
-        return match ? Number(match[0]) : 1;
+        var match = device.displayName.match(Device.DEFAULT_NAME + ' (\\d+)$');
+        return match ? Number(match[1]) : 1;
       });
 
       var deviceName = Device.DEFAULT_NAME;
