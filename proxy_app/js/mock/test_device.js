@@ -1,12 +1,13 @@
 var TestDevice = {};
 
+TestDevice.SOCKET_LIST = "chrome_devtools_remote_9222";
+
 TestDevice.start = function() {
-  TestDevice._tunnels = {};
+  TestDevice._localSockets = {};
 
   TestDevice._signalingHandler = new WebRTCServerSocket.SignalingHandler();
-  TestDevice._signalingHandler.onaccept = TestDevice._onClientConnectionAccept;
-  TestDevice._signalingHandler.onclose = TestDevice._onClientConnectionClose;
-
+  TestDevice._tunnelHandler = new TunnelHandler(TestDevice._signalingHandler);
+  
   Device.start(
       TestDevice.handleCommand,
       TestDevice.getDeviceState,
@@ -14,7 +15,10 @@ TestDevice.start = function() {
       function() { console.error('Cannot initialize test device'); });
 };
 
-TestDevice.SOCKET_LIST = "chrome_devtools_remote";
+TestDevice.stop = function() {
+  Device.stop();
+  TestDevice._signalingHandler.stop();
+};
 
 TestDevice.getDeviceState = function() {
   var state = {
@@ -23,11 +27,6 @@ TestDevice.getDeviceState = function() {
   if (TestDevice._signalingHandler.hasPendingSignaling())
     state.hasPendingSignaling = "true";
   return state;
-};
-
-TestDevice.stop = function() {
-  Device.stop();
-  TestDevice._signalingHandler.stop();
 };
 
 TestDevice.handleCommand = function(name, parameters, patchResultsFunc) {
@@ -45,79 +44,106 @@ TestDevice.handleCommand = function(name, parameters, patchResultsFunc) {
       });
 };
 
-TestDevice._onClientConnectionAccept = function(connection) {
-  TestDevice._clientConnection = connection;
-  TestDevice._clientConnection.onmessage = TestDevice._onClientConnectionMessage;
-};
+function TunnelHandler(serverSignalingHandler) {
+  serverSignalingHandler.onaccept = this._onTunnelCreated.bind(this);
+  serverSignalingHandler.onclose = this._onTunnelClosed.bind(this);
 
-TestDevice._onClientConnectionClose = function() {
-  TestDevice._clientConnection = null;
-  console.info('Closing server side tunnels');
-  TCP.Socket.getByOwner(this).forEach(function(tunnel) {
-    tunnel.close();
-  });
-};
+  this._localSockets = {};
+}
 
-TestDevice._onClientConnectionMessage = function(buffer) {
-  var clientId = DeviceConnector.Connection.parseClientId(buffer);
-  var type = DeviceConnector.Connection.parsePacketType(buffer);
+TunnelHandler.debug = false;
 
-  var tunnel = TestDevice._tunnels[clientId];
+TunnelHandler.prototype = {
+  _onTunnelCreated: function(tunnel) {
+    this._tunnel = tunnel;
+    this._tunnel.onmessage = this._onTunnelMessage.bind(this);
+  },
+  
+  _onTunnelClosed: function() {
+    delete this._tunnel;
+    TCP.Socket.getByOwner(this).forEach(function(socket) {
+      socket.close();
+    });
+  },
+  
+  _onTunnelMessage: function(buffer) {
+    var clientId = DeviceConnector.Connection.parseClientId(buffer);
 
-  switch (type) {
-    case DeviceConnector.Connection.OPEN:
-      if (tunnel) {
-        console.error("OPEN: server side socket already exists for " + clientId);
-        return;
-      }
-      TCP.Socket.connect("127.0.0.1", 9222, this, function(socket) {
-        if (socket) {
-          TestDevice.send(clientId, DeviceConnector.Connection.OPEN);
-          TestDevice._tunnels[clientId] = socket;
-          socket.onclose = TestDevice._onTunnelClosed.bind(null, clientId, true);
-          socket.onmessage = TestDevice._onTunnelMessage.bind(null, clientId);
-          console.debug('Created server side socket for ' + clientId);
-        } else {
-          TestDevice.send(clientId, DeviceConnector.Connection.OPEN_FAIL);
+    var logPrefix = 'Local socket ' + clientId;
+    var logError = console.error.bind(console, logPrefix);
+
+    var logDebug;
+    if (TunnelHandler.debug)
+      logDebug = console.debug.bind(console, logPrefix);
+    else
+      logDebug = function() {};
+
+    var type = DeviceConnector.Connection.parsePacketType(buffer);
+  
+    var localSocket = this._localSockets[clientId];
+  
+    switch (type) {
+      case DeviceConnector.Connection.OPEN:
+        if (localSocket) {
+          logError("already exists");
+          return;
         }
-      });
-      break;
+        var socketName = Uint8ArrayToString(new Uint8Array(DeviceConnector.Connection.parsePacketPayload(buffer)));
+        var port;
+        try {
+          port = parseInt(socketName.match('\\d+$')[0]);
+        } catch (e) {
+          logError('failed to connect, invalid socket name: ' + socketName);
+          this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN_FAIL);
+          return;
+        }
+        TCP.Socket.connect("127.0.0.1", port, this, function(socket) {
+          if (socket) {
+            logDebug('connected');
+            this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN);
+            this._localSockets[clientId] = socket;
+            socket.onclose = this._onLocalSocketClosedItself.bind(this, clientId);
+            socket.onmessage = this._sendToTunnel.bind(this, clientId, DeviceConnector.Connection.DATA);
+          } else {
+            logError('failed to connect');
+            this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN_FAIL);
+          }
+        }.bind(this));
+        break;
+  
+      case DeviceConnector.Connection.CLOSE:
+        if (localSocket) {
+          logDebug('closed by client');
+          localSocket.onclose = this._onLocalSocketClosed.bind(this, clientId);
+          localSocket.close();
+        } else {
+          logError("does not exist (CLOSE)");
+        }
+        break;
+  
+      case DeviceConnector.Connection.DATA:
+        if (localSocket) {
+          localSocket.send(DeviceConnector.Connection.parsePacketPayload(buffer));
+        } else {
+          logError("does not exist (DATA)");
+        }
+        break;
+  
+      default:
+        logError(' received unknown packet type ' + type);
+    }
+  },
 
-    case DeviceConnector.Connection.CLOSE:
-      if (tunnel) {
-        tunnel.onclose = TestDevice._onTunnelClosed.bind(null, clientId, false);
-        tunnel.close();
-      } else {
-        console.error("CLOSE: server side socket does not exist for " + clientId);
-      }
-      break;
+  _sendToTunnel: function(clientId, type, opt_payload) {
+    this._tunnel.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
+  },
 
-    case DeviceConnector.Connection.DATA:
-      console.debug("Forwarded " + buffer.byteLength + " bytes to from " + clientId);
-      if (tunnel)
-        tunnel.send(DeviceConnector.Connection.parsePacketPayload(buffer));
-      else
-        console.error('DATA: cannot find tunnel for ' + clientId);
-      break;
+  _onLocalSocketClosed: function(clientId) {
+    delete this._localSockets[clientId];
+  },
 
-    default:
-      console.error('Unknown packet type ' + type + ' from ' + clientId);
+  _onLocalSocketClosedItself: function(clientId) {
+    this._sendToTunnel(clientId, DeviceConnector.Connection.CLOSE);
+    this._onLocalSocketClosed(clientId);
   }
-
-};
-
-TestDevice._onTunnelClosed = function(clientId, notifyClient) {
-  console.debug('Closed server side socket for ' + clientId +
-      ' by ' + (notifyClient ? 'device' : 'client'));
-  if (notifyClient)
-    TestDevice.send(clientId, DeviceConnector.Connection.CLOSE);
-  delete TestDevice._tunnels[clientId];
-};
-
-TestDevice._onTunnelMessage = function(clientId, data) {
-  TestDevice.send(clientId, DeviceConnector.Connection.DATA, data);
-};
-
-TestDevice.send = function(clientId, type, opt_payload) {
-  TestDevice._clientConnection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
 };
