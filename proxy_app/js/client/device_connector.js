@@ -15,7 +15,6 @@ DeviceConnector.ICE_CONFIG_URL = "http://computeengineondemand.appspot.com/turn?
 
 DeviceConnector.prototype = {
   _start: function(turnServerConfig) {
-    console.log('Starting with TURN config:', turnServerConfig);
     this._iceServersConfig = {
       iceServers: [
         {urls: "stun:stun.l.google.com:19302"}
@@ -28,6 +27,7 @@ DeviceConnector.prototype = {
         credential: turnServerConfig.password
       });
     }
+    console.log('Started device connector with ICE config:', JSON.stringify(this._iceServersConfig));
     this._queryDevices();
   },
   
@@ -89,14 +89,17 @@ DeviceConnector.Connection = function(registry, id, iceServersConfig) {
   this._registry = registry;
   this._id = id;
 
+  this._logInfo = console.info.bind(console, this._id);
+  this._logError = console.error.bind(console, this._id);
+
   if (this._registry[this._id]) {
-    console.error('Connection already exists');
+    this._logError('Connection already exists');
     return;
   }
 
   this._registry[this._id] = this;
 
-  this._webrtcConnection = new WebRTCClientSocket();
+  this._webrtcConnection = new WebRTCClientSocket('');
   this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
   this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
   this._webrtcConnection.onclose = this.close.bind(this);
@@ -168,11 +171,12 @@ DeviceConnector.Connection.prototype = {
   close: function() {
     if (this._closing)
       return;
+    this._logInfo('Device connection closed');
     this._closing = true;
     this._connected = false;
 
     if (!this._registry[this._id]) {
-      console.error('Connection does not exist');
+      this._logError('Connection does not exist');
       return;
     }
     delete this._registry[this._id];
@@ -250,7 +254,7 @@ DeviceConnector.Connection.prototype = {
   },
 
   _onConnectionOpen: function() {
-    console.info('Device connector is ready');
+    this._logInfo('Device connection open');
     this._connected = true;
   },
 
@@ -269,32 +273,32 @@ DeviceConnector.Connection.prototype = {
         if (openCallback)
           openCallback(new DeviceConnector.Connection.Tunnel(this, clientId));
         else
-          console.error('Open: cannot find open callback for ' + clientId);
+          this._logError('OPEN: cannot find open callback for ' + clientId);
         break;
       
       case DeviceConnector.Connection.OPEN_FAIL:
         if (openCallback)
           openCallback();
         else
-          console.error('Open: cannot find open callback for ' + clientId);
+          this._logError('OPEN_FAIL: cannot find open callback for ' + clientId);
         break;
 
       case DeviceConnector.Connection.CLOSE:
         if (tunnel)
           tunnel.close();
         else
-          console.error('Close: cannot find tunnel for ' + clientId);
+          this._logError('CLOSE: cannot find tunnel for ' + clientId);
         break;
         
       case DeviceConnector.Connection.DATA:
         if (tunnel)
           tunnel.receive(DeviceConnector.Connection.parsePacketPayload(buffer));
         else
-          console.error('Data: cannot find tunnel for ' + clientId);
+          this._logError('DATA: cannot find tunnel for ' + clientId);
         break;
         
       default:
-        console.error('Unknown packet type ' + type + ' for ' + clientId);
+        this._logError('Unknown packet type ' + type + ' for ' + clientId);
     }
   },
   
@@ -308,7 +312,7 @@ DeviceConnector.Connection.Tunnel = function(connection, clientId) {
   this._clientId = clientId;
 
   if (this._connection._tunnels[this._clientId]) {
-    console.error("Tunnel already exists for client " + this._clientId);
+    this._logError("Tunnel already exists for client " + this._clientId);
     return;
   }
   this._connection._tunnels[this._clientId] = this;
@@ -320,7 +324,7 @@ DeviceConnector.Connection.Tunnel.prototype = {
       return;
     this._closing = true;
     if (!this._connection._tunnels[this._clientId]) {
-      console.error("Tunnel already closed: " + this._clientId);
+      this._logError("Tunnel does not exist for client " + this._clientId);
       return;
     }
     if (this.onclose)

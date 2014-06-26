@@ -10,15 +10,11 @@ TestDevice.start = function() {
   Device.start(
       TestDevice.handleCommand,
       TestDevice.getDeviceState,
-      TestDevice.onStart,
+      function() { console.log('Initialized test device'); },
       function() { console.error('Cannot initialize test device'); });
 };
 
 TestDevice.SOCKET_LIST = "chrome_devtools_remote";
-
-TestDevice.onStart = function() {
-  console.log('Initialized test device');
-};
 
 TestDevice.getDeviceState = function() {
   var state = {
@@ -71,7 +67,7 @@ TestDevice._onClientConnectionMessage = function(buffer) {
   switch (type) {
     case DeviceConnector.Connection.OPEN:
       if (tunnel) {
-        console.error("Open: server side socket already exists for " + clientId);
+        console.error("OPEN: server side socket already exists for " + clientId);
         return;
       }
       TCP.Socket.connect("127.0.0.1", 9222, this, function(socket) {
@@ -92,7 +88,7 @@ TestDevice._onClientConnectionMessage = function(buffer) {
         tunnel.onclose = TestDevice._onTunnelClosed.bind(null, clientId, false);
         tunnel.close();
       } else {
-        console.error("Close: server side socket does not exist for " + clientId);
+        console.error("CLOSE: server side socket does not exist for " + clientId);
       }
       break;
 
@@ -101,7 +97,7 @@ TestDevice._onClientConnectionMessage = function(buffer) {
       if (tunnel)
         tunnel.send(DeviceConnector.Connection.parsePacketPayload(buffer));
       else
-        console.error('Data: cannot find tunnel for ' + clientId);
+        console.error('DATA: cannot find tunnel for ' + clientId);
       break;
 
     default:

@@ -166,7 +166,7 @@ Device.poll = function(commandHandler, deviceStateGetter) {
   if (!Device._cachedDeviceStateJson || Device._cachedDeviceStateJson != deviceStateJson) {
     Device._cachedDeviceStateJson = deviceStateJson;
     Device.patchVendorState(deviceState, function() {
-      console.log("Patched device state: " + deviceStateJson);
+      console.debug("Patched device state: " + deviceStateJson);
     });
   }
 };

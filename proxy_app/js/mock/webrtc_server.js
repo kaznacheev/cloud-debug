@@ -49,7 +49,8 @@ WebRTCServerSocket.SignalingHandler.prototype = {
       try {
         for (var i = 0; i != messageObjects.length; i++) {
           var messageObj = messageObjects[i];
-          console.debug("Server signaling: received", JSON.stringify(messageObj));
+          if (WebRTCSocket.debug)
+            console.debug("Server signaling: received", JSON.stringify(messageObj));
 
           if (messageObj.iceServers) {
             this._iceServersConfig = messageObj;

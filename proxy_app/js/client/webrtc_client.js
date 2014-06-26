@@ -1,7 +1,17 @@
 function WebRTCSocket(name) {
-  this._logPrefix = name + ' RTC socket:';
-  console.info(this._logPrefix, 'Created');
+  var logPrefix = name;
+  this._logInfo = console.info.bind(console, logPrefix);
+  this._logError = console.error.bind(console, logPrefix);
+
+  if (WebRTCSocket.debug)
+    this._logDebug = console.debug.bind(console, logPrefix);
+  else
+    this._logDebug = function() {};
+
+  this._logInfo('Created');
 }
+
+WebRTCSocket.debug = false;
 
 WebRTCSocket.CLOSE_SIGNAL = { type: 'close' };
 
@@ -22,7 +32,7 @@ WebRTCSocket.prototype = {
     if (this._closing)
       return;
     this._closing = true;
-    console.info(this._logPrefix, 'Destroyed');
+    this._logInfo('Destroyed');
 
     if (this.onclose)
       this.onclose();
@@ -37,7 +47,7 @@ WebRTCSocket.prototype = {
   send: function(data) {
     if (!this._dataChannel)
       return;
-    console.debug(this._logPrefix, 'Data channel sent ' + data.byteLength + ' bytes');
+    this._logDebug('Data channel sent ' + data.byteLength + ' bytes');
     this._dataChannel.send(data);
   },
 
@@ -74,9 +84,9 @@ WebRTCSocket.prototype = {
     if (this._closing)
       return;
     if (event.candidate)
-      console.debug(this._logPrefix, 'Sent ICE candidate to peer', event.candidate.candidate);
+      this._logDebug('Sent ICE candidate to peer', event.candidate.candidate);
     else
-      console.debug(this._logPrefix, 'Received the last ICE candidate.');
+      this._logDebug('Received the last ICE candidate.');
     this._sendSignaling(event.candidate);
   },
 
@@ -86,18 +96,18 @@ WebRTCSocket.prototype = {
   },
 
   _onIceConnectionState: function(event) {
-    console.info(this._logPrefix, 'ICE connection state', event.currentTarget.iceConnectionState);
+    this._logInfo('ICE connection state', event.currentTarget.iceConnectionState);
   },
 
   _onError: function(context, error) {
-    console.error(this._logPrefix, context + ' error', error.toString());
+    this._logError(context, error.toString());
     if (this.onerror)
       this.onerror();
     this.close();
   },
 
   _onDataChannelOpen: function() {
-    console.info(this._logPrefix, 'Data channel open');
+    this._logInfo('Data channel open');
     if (this._closing) {
       this._dataChannel.close();
       return;
@@ -107,35 +117,35 @@ WebRTCSocket.prototype = {
   },
 
   _onDataChannelClose: function() {
-    console.info(this._logPrefix, 'Data channel closed');
+    this._logInfo('Data channel closed');
     this._dataChannel = null;
     this.close();
   },
 
   _onDataChannelError: function(error) {
-    console.error(this._logPrefix, 'Data channel error', error.toString());
+    this._logError('Data channel error', error.toString());
     if (this.onerror)
       this.onerror();
     this.close();
   },
 
   _onDataChannelMessage: function(event) {
-    console.debug(this._logPrefix, 'Data channel received ' + event.data.byteLength + ' bytes');
+    this._logDebug('Data channel received ' + event.data.byteLength + ' bytes');
     if (this.onmessage)
       this.onmessage(event.data);
   },
 
   _success: function(message) {
-    return console.debug.bind(console, this._logPrefix, message + ' OK');
+    return this._logDebug.bind(null, message + ' OK');
   },
 
   _failure: function(message) {
-    return console.error.bind(console, this._logPrefix, message + ' FAILED');
+    return this._logError.bind(null, message + ' FAILED');
   }
 };
 
-function WebRTCClientSocket() {
-  WebRTCSocket.call(this, 'Client');
+function WebRTCClientSocket(name) {
+  WebRTCSocket.call(this, name);
 }
 
 WebRTCClientSocket.prototype = {
@@ -152,6 +162,7 @@ WebRTCClientSocket.prototype = {
 
   __proto__: WebRTCSocket.prototype
 };
+
 
 WebRTCClientSocket.SignalingHandler = function(socket, exchangeSignalingFunc) {
   this._socket = socket;
@@ -196,13 +207,13 @@ WebRTCClientSocket.SignalingHandler.prototype = {
     try {
       messageObjects = JSON.parse(message);
     } catch (e) {
-      console.error(this._socket._logPrefix, "Cannot parse signaling messages: ", message, e);
+      this._socket._logError("Cannot parse signaling messages: ", message, e);
       return;
     }
     try {
       for (var i = 0; i != messageObjects.length; ++i) {
         var messageObject = messageObjects[i];
-        console.debug(this._socket._logPrefix, 'Incoming signaling:', JSON.stringify(messageObject));
+        this._socket._logDebug('Incoming signaling:', JSON.stringify(messageObject));
         if (messageObject.type == "close") {
           this._socket.close();
           return;
@@ -211,16 +222,16 @@ WebRTCClientSocket.SignalingHandler.prototype = {
         } else if ("candidate" in messageObject) {
           this._socket.addIceCandidate(messageObject);
         } else {
-          console.error(this._socket._logPrefix, "Unexpected signaling message", JSON.stringify(messageObject));
+          this._socket._logError("Unexpected signaling message", JSON.stringify(messageObject));
         }
       }
     } catch (e) {
-      console.error(this._socket._logPrefix, "Error while processing: ", message, e.stack);
+      this._socket._logError("Error while processing: ", message, e.stack);
     }
   },
 
   _onSignalingError: function() {
-    console.warn(this._socket._logPrefix, 'signaling not processed by the server');
+    this._socket._logInfo('Signaling not processed by the server');
     this._socket.close();
   }
 };

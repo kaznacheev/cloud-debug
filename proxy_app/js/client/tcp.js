@@ -1,8 +1,18 @@
 var TCP = {};
 
+TCP.debug = false;
+
 TCP.Socket = function(id, opt_owner) {
   this._id = id;
   this._owner = opt_owner;
+
+  var logPrefix = "Socket " + this._id;
+  this._logError = console.error.bind(console, logPrefix);
+  if (TCP.debug)
+    this._logDebug = console.debug.bind(console, logPrefix);
+  else
+    this._logDebug = function() {};
+
   TCP.Socket._register(this);
 };
 
@@ -12,7 +22,7 @@ TCP.Socket._registry = {};
 
 TCP.Socket._register = function(socket) {
   if (TCP.Socket._registry[socket._id]) {
-    console.error('Socket already registered: ' + socket._id);
+    socket._logError('already registered');
     return;
   }
 
@@ -22,12 +32,12 @@ TCP.Socket._register = function(socket) {
   }
 
   TCP.Socket._registry[socket._id] = socket;
-  console.debug("Created TCP socket " + socket._id + ", total: " + TCP.Socket._count);
+  socket._logDebug("created, total: " + TCP.Socket._count);
 };
 
 TCP.Socket._unregister = function(socket) {
   if (!TCP.Socket._registry[socket._id]) {
-    console.error('Socket not registered: ' + socket._id);
+    socket._logError('not registered');
     return;
   }
 
@@ -37,7 +47,7 @@ TCP.Socket._unregister = function(socket) {
     chrome.sockets.tcp.onReceive.removeListener(TCP.Socket._dispatchReceive);
     chrome.sockets.tcp.onReceiveError.removeListener(TCP.Socket._dispatchReceiveError);
   }
-  console.debug("Deleted TCP socket " + socket._id + ", total: " + TCP.Socket._count);
+  socket._logDebug("deleted, total: " + TCP.Socket._count);
 };
 
 TCP.Socket.getByOwner = function(owner) {
@@ -61,37 +71,35 @@ TCP.Socket.connect = function(peerAddress, peerPort, owner, callback) {
         else
           callback(new TCP.Socket(createInfo.socketId, owner));
       } catch (e) {
-        console.error(e.stack);
+        this._logError(e.stack);
       }
     });
   });
 };
 
 TCP.Socket._dispatchReceive = function(receiveInfo) {
-  console.debug("Socket 'receive' event: id=" + receiveInfo.socketId + ", size=" + receiveInfo.data.byteLength);
   var socket = TCP.Socket._registry[receiveInfo.socketId];
   if (socket) {
     try {
       socket._onReceive(receiveInfo.data);
     } catch (e) {
-      console.error(e.stack);
+      socket._logError(e.stack);
     }
   } else {
-    console.error('onReceive: unknown socket id=' + receiveInfo.socketId);
+    console.error('onReceive: unknown socket id ' + receiveInfo.socketId);
   }
 };
 
 TCP.Socket._dispatchReceiveError = function(receiveInfo) {
-  console.debug("Socket 'receiveError' event: id=" + receiveInfo.socketId + ", code=" + receiveInfo.resultCode);
   var socket = TCP.Socket._registry[receiveInfo.socketId];
   if (socket) {
     try {
       socket._onReceiveError(receiveInfo.resultCode);
     } catch (e) {
-      console.error(e.stack);
+      socket._logError(e.stack);
     }
   } else {
-    console.error('onReceiveError: unknown socket id=' + receiveInfo.socketId);
+    console.error('onReceiveError: unknown socket id ' + receiveInfo.socketId);
   }
 };
 
@@ -109,11 +117,11 @@ TCP.Socket.prototype = {
   send: function(data) {
     chrome.sockets.tcp.send(this._id, data, function(sendInfo) {
       if (sendInfo.resultCode < 0) {
-        console.error('Send error '+ sendInfo.resultCode + ' on ' + this._id);
+        this._logError('send error '+ sendInfo.resultCode);
       } else if (sendInfo.bytesSent != data.byteLength)
-        console.error('Sent ' + sendInfo.bytesSent + ' out of ' + data.byteLength + ' bytes to ' + this._id);
+        this._logError('sent ' + sendInfo.bytesSent + ' out of ' + data.byteLength + ' bytes');
       else
-        console.debug('Sent ' + data.byteLength + ' bytes to ' + this._id);
+        this._logDebug('sent ' + data.byteLength + ' bytes');
     }.bind(this));
   },
 
@@ -123,6 +131,7 @@ TCP.Socket.prototype = {
   },
 
   _onReceive: function(data) {
+    this._logDebug('received ' + data.byteLength + ' bytes');
     if (this._closing)
       return;
 
@@ -142,6 +151,10 @@ TCP.Server = function(address, port, handlerClass, handlerContext) {
   this._port = port;
   this._handlerClass = handlerClass;
   this._handlerContext = handlerContext;
+
+  var logPrefix = address + ":" + port;
+  this._logInfo = console.info.bind(console, logPrefix);
+  this._logError = console.error.bind(console, logPrefix);
   chrome.sockets.tcpServer.create(this._onCreate.bind(this));
 };
 
@@ -152,7 +165,7 @@ TCP.Server.prototype = {
     this._closing = true;
     if (this._socketId) {
       chrome.sockets.tcpServer.close(this._socketId);
-      console.info('Closed server socket id=' + this._socketId);
+      this._logInfo('Closed server socket ' + this._socketId);
     }
     if (this._onAcceptBound)
       chrome.sockets.tcpServer.onAccept.removeListener(this._onAcceptBound);
@@ -163,10 +176,10 @@ TCP.Server.prototype = {
   },
 
   _onCreate: function(createInfo) {
-    console.info('Created server socket id=' + createInfo.socketId);
+    this._logInfo('Created server socket ' + createInfo.socketId);
     if (this._closing) {
       chrome.sockets.tcpServer.close(createInfo.socketId);
-      console.info('Closed server socket id=' + createInfo.socketId);
+      this._logInfo('Closed server socket ' + createInfo.socketId);
       return;
     }
     this._socketId = createInfo.socketId;
@@ -176,7 +189,7 @@ TCP.Server.prototype = {
 
   _onListen: function(result) {
     if (result) {
-      console.error('Listen returned ' + result);
+      this._logError('Listen returned ' + result);
       return;
     }
     this._onAcceptBound = this._onAccept.bind(this);
@@ -186,12 +199,11 @@ TCP.Server.prototype = {
   _onAccept: function(acceptInfo) {
     if (acceptInfo.socketId != this._socketId)
       return;
-    console.debug('Accepted connection on ' + acceptInfo.socketId + ' from ', acceptInfo.clientSocketId);
     var socket = new TCP.Socket(acceptInfo.clientSocketId, this);
     try {
       new this._handlerClass(this._handlerContext, socket);
     } catch (e) {
-      console.error(e.stack);
+      socket._logError("Handler constructor failed", e.stack);
       socket.close();
       return;
     }
