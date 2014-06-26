@@ -103,7 +103,7 @@ TunnelHandler.prototype = {
             this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN);
             this._localSockets[clientId] = socket;
             socket.onclose = this._onLocalSocketClosedItself.bind(this, clientId);
-            socket.onmessage = this._sendToTunnel.bind(this, clientId, DeviceConnector.Connection.DATA);
+            socket.onmessage = this._onLocalSocketMessage.bind(this, clientId);
           } else {
             logError('failed to connect');
             this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN_FAIL);
@@ -123,6 +123,7 @@ TunnelHandler.prototype = {
   
       case DeviceConnector.Connection.DATA:
         if (localSocket) {
+          logDebug('received ' + buffer.byteLength + ' bytes from client');
           localSocket.send(DeviceConnector.Connection.parsePacketPayload(buffer));
         } else {
           logError("does not exist (DATA)");
@@ -135,6 +136,8 @@ TunnelHandler.prototype = {
   },
 
   _sendToTunnel: function(clientId, type, opt_payload) {
+    if (!this._tunnel)
+      return;
     this._tunnel.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_payload));
   },
 
@@ -145,5 +148,11 @@ TunnelHandler.prototype = {
   _onLocalSocketClosedItself: function(clientId) {
     this._sendToTunnel(clientId, DeviceConnector.Connection.CLOSE);
     this._onLocalSocketClosed(clientId);
+  },
+
+  _onLocalSocketMessage: function(clientId, data) {
+    if (TunnelHandler.debug)
+      console.debug('Local socket ' + clientId + ' sent ' + data.byteLength + ' bytes to client');
+    this._sendToTunnel(clientId, DeviceConnector.Connection.DATA, data);
   }
 };

@@ -1,5 +1,5 @@
 function WebRTCSocket(name) {
-  var logPrefix = name;
+  var logPrefix = name + ':';
   this._logInfo = console.info.bind(console, logPrefix);
   this._logError = console.error.bind(console, logPrefix);
 
@@ -96,7 +96,7 @@ WebRTCSocket.prototype = {
   },
 
   _onIceConnectionState: function(event) {
-    this._logInfo('ICE connection state', event.currentTarget.iceConnectionState);
+    this._logInfo('ICE connection state: ' + event.currentTarget.iceConnectionState);
   },
 
   _onError: function(context, error) {

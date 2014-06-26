@@ -11,6 +11,8 @@ function DeviceConnector() {
   xhr.send();
 }
 
+DeviceConnector.debug = false;
+
 DeviceConnector.ICE_CONFIG_URL = "http://computeengineondemand.appspot.com/turn?username=28230128&key=4080218913";
 
 DeviceConnector.prototype = {
@@ -27,11 +29,14 @@ DeviceConnector.prototype = {
         credential: turnServerConfig.password
       });
     }
-    console.log('Started device connector with ICE config:', JSON.stringify(this._iceServersConfig));
+    console.log('Started device connector, ICE config:', JSON.stringify(this._iceServersConfig));
+    this._active = true;
     this._queryDevices();
   },
   
   stop: function() {
+    console.log('Stopped device connector');
+    delete this._active;
     if (this._timeout)
       clearTimeout(this._timeout);
 
@@ -57,19 +62,23 @@ DeviceConnector.prototype = {
   },
 
   _receivedDevices: function(response) {
-    var devicesResource = response.devices || [];
-
-    var newDeviceIds = devicesResource.map(function(deviceResource) {
-      return deviceResource.id;
-    });
+    if (!this._active)
+      return;
 
     var oldDeviceIds = this.getDeviceIds();
+    var newDeviceIds = [];
 
-    newDeviceIds.forEach(function(id) {
-      if (oldDeviceIds.indexOf(id) < 0) {
-        new DeviceConnector.Connection(this._connections, id, this._iceServersConfig);
-      }
-    }.bind(this));
+    if (response.devices) {
+      response.devices.forEach(function(deviceResource) {
+        var id = deviceResource.id;
+        newDeviceIds.push(id);
+        if (this._connections[id]) {
+          this._connections[id].update(deviceResource);
+        } else {
+          new DeviceConnector.Connection(this._connections, deviceResource, this._iceServersConfig);
+        }
+      }.bind(this));
+    }
 
     oldDeviceIds.forEach(function(id) {
       if (newDeviceIds.indexOf(id) < 0) {
@@ -77,20 +86,22 @@ DeviceConnector.prototype = {
       }
     }.bind(this));
 
-    devicesResource.forEach(function(deviceResource) {
-      this._connections[deviceResource.id].update(deviceResource);
-    }.bind(this));
-
     this._timeout = setTimeout(this._queryDevices.bind(this), 1000);
   }
 };
 
-DeviceConnector.Connection = function(registry, id, iceServersConfig) {
+DeviceConnector.Connection = function(registry, resource, iceServersConfig) {
   this._registry = registry;
-  this._id = id;
+  this._id = resource.id;
+  this._displayName = resource.displayName;
 
-  this._logInfo = console.info.bind(console, this._id);
-  this._logError = console.error.bind(console, this._id);
+  var logPrefix = "Connection to " + this._displayName + ":";
+  this._logInfo = console.info.bind(console, logPrefix);
+  this._logError = console.error.bind(console, logPrefix);
+  if (DeviceConnector.debug)
+    this._logDebug = console.debug.bind(console, logPrefix);
+  else
+    this._logDebug = function() {};
 
   if (this._registry[this._id]) {
     this._logError('Connection already exists');
@@ -99,7 +110,7 @@ DeviceConnector.Connection = function(registry, id, iceServersConfig) {
 
   this._registry[this._id] = this;
 
-  this._webrtcConnection = new WebRTCClientSocket('');
+  this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
   this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
   this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
   this._webrtcConnection.onclose = this.close.bind(this);
@@ -113,6 +124,8 @@ DeviceConnector.Connection = function(registry, id, iceServersConfig) {
   this._tunnels = {};
 
   this._sockets = [];
+
+  this.update(resource);
 };
 
 DeviceConnector.Connection.OPEN = 1;
@@ -189,7 +202,7 @@ DeviceConnector.Connection.prototype = {
   },
 
   getDeviceName: function () {
-    return this._resource.displayName;
+    return this._displayName;
   },
 
   getScreenSize: function () {
@@ -202,15 +215,21 @@ DeviceConnector.Connection.prototype = {
 
   connect: function (socketName, clientId, callback) {
     if (!this._connected || this._tunnels[clientId] || this._pendingOpen[clientId]) {
+      var message = 'Tunnel ' + clientId + ' failed to connect';
+      if (!this._connected)
+        this._logDebug(message + ', WebRTC not connected');
+      else if (this._tunnels[clientId])
+        this._logError(message + ', already connected');
+      else
+        this._logError(message + ', already connecting');
       callback();
       return;
     }
     this._pendingOpen[clientId] = callback;
-    this.sendOpen(clientId, socketName);
+    this._sendOpen(clientId, socketName);
   },
 
   update: function(resource) {
-    this._resource = resource;
     var vendorState = {};
     try {
       resource.state.base.vendorState.value.forEach(function(item) {
@@ -223,15 +242,18 @@ DeviceConnector.Connection.prototype = {
       this._signalingHandler.poll();
   },
 
-  sendOpen: function(clientId, socketName) {
+  _sendOpen: function(clientId, socketName) {
+    this._logDebug('Tunnel ' + clientId + ' connecting');
     this._send(clientId, DeviceConnector.Connection.OPEN, socketName);
   },
 
-  sendClose: function(clientId) {
+  _sendClose: function(clientId) {
+    this._logDebug('Tunnel ' + clientId + ' disconnecting');
     this._send(clientId, DeviceConnector.Connection.CLOSE);
   },
 
-  sendData: function(clientId, data) {
+  _sendData: function(clientId, data) {
+    this._logDebug('Tunnel ' + clientId + ' sent ' + data.byteLength + ' bytes');
     this._send(clientId, DeviceConnector.Connection.DATA, data);
   },
 
@@ -268,75 +290,90 @@ DeviceConnector.Connection.prototype = {
     if (openCallback)
       delete this._pendingOpen[clientId];
 
+    var logPrefix = "Tunnel " + clientId;
+    var logError = this._logError.bind(null, logPrefix);
+    var logDebug = this._logDebug.bind(null, logPrefix);
+
     switch (type) {
       case DeviceConnector.Connection.OPEN:
-        if (openCallback)
-          openCallback(new DeviceConnector.Connection.Tunnel(this, clientId));
-        else
-          this._logError('OPEN: cannot find open callback for ' + clientId);
+        if (tunnel) {
+          logError('already exists (OPEN)');
+        } else  if (openCallback) {
+          logDebug('created');
+          tunnel = new DeviceConnector.Connection.Tunnel();
+          tunnel.oncloseinternal = this._onTunnelClosedByClient.bind(this, clientId);
+          tunnel.send = this._sendData.bind(this, clientId);
+          this._tunnels[clientId] = tunnel;
+          openCallback(tunnel);
+        } else {
+          logError('does not exist (OPEN');
+        }
         break;
       
       case DeviceConnector.Connection.OPEN_FAIL:
-        if (openCallback)
+        if (openCallback) {
+          logDebug('failed to connect');
           openCallback();
-        else
-          this._logError('OPEN_FAIL: cannot find open callback for ' + clientId);
+        } else {
+          logError('callback does not exist (OPEN_FAIL)');
+        }
         break;
 
       case DeviceConnector.Connection.CLOSE:
-        if (tunnel)
+        if (tunnel) {
+          logDebug('closed by server');
+          tunnel.oncloseinternal = this._onTunnelClosed.bind(this, clientId);
           tunnel.close();
-        else
-          this._logError('CLOSE: cannot find tunnel for ' + clientId);
+        } else {
+          logError('does not exist (CLOSE');
+        }
         break;
         
       case DeviceConnector.Connection.DATA:
-        if (tunnel)
+        if (tunnel) {
+          logDebug('received ' + buffer.byteLength + ' bytes');
           tunnel.receive(DeviceConnector.Connection.parsePacketPayload(buffer));
-        else
-          this._logError('DATA: cannot find tunnel for ' + clientId);
+        } else {
+          logError('does not exist (DATA)');
+        }
         break;
         
       default:
-        this._logError('Unknown packet type ' + type + ' for ' + clientId);
+        logError('received unknown packet type ' + type);
     }
   },
   
   _send: function(clientId, type, opt_data) {
     this._webrtcConnection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_data));
+  },
+
+  _onTunnelClosed: function(clientId) {
+    if (this._tunnels[clientId])
+      delete this._tunnels[clientId];
+    else
+      this._logError("Tunnel " + clientId + " does not exist (closing)");
+  },
+
+  _onTunnelClosedByClient: function(clientId) {
+    this._logDebug("Tunnel " + clientId + " closed by client");
+    this._sendClose(clientId);
+    this._onTunnelClosed(clientId);
   }
 };
 
-DeviceConnector.Connection.Tunnel = function(connection, clientId) {
-  this._connection = connection;
-  this._clientId = clientId;
-
-  if (this._connection._tunnels[this._clientId]) {
-    this._logError("Tunnel already exists for client " + this._clientId);
-    return;
-  }
-  this._connection._tunnels[this._clientId] = this;
-};
+DeviceConnector.Connection.Tunnel = function() {};
 
 DeviceConnector.Connection.Tunnel.prototype = {
   close: function() {
     if (this._closing)
       return;
     this._closing = true;
-    if (!this._connection._tunnels[this._clientId]) {
-      this._logError("Tunnel does not exist for client " + this._clientId);
-      return;
-    }
     if (this.onclose)
       this.onclose();
-    this._connection.sendClose(this._clientId);
-    delete this._connection._tunnels[this._clientId];
+    if (this.oncloseinternal)
+      this.oncloseinternal();
   },
-  
-  send: function(data) {
-    this._connection.sendData(this._clientId, data);
-  },
-  
+
   receive: function(data) {
     if (this.onmessage)
       this.onmessage(data);
