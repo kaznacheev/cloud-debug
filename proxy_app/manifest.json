@@ -13,7 +13,21 @@
   ],
   "app": {
     "background": {
-      "scripts": ["js/background.js"]
+      "scripts": [
+        "js/background.js",
+        "js/util.js",
+        "js/client/adb_command_handler.js",
+        "js/client/device_connector.js",
+        "js/client/tcp.js",
+        "js/client/webrtc_client.js",
+        "js/gcd/device.js",
+        "js/gcd/keys.js",
+        "js/gcd/user.js",
+        "js/gcd/xhr.js",
+        "js/mock/test_device.js",
+        "js/mock/test_device_connector.js",
+        "js/mock/webrtc_server.js"
+      ]
     }
   },
   "oauth2": {
