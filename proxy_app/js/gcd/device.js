@@ -85,6 +85,7 @@ Device.start = function(commandHandler, deviceStateGetter, successCallback, erro
 };
 
 Device.stop = function() {
+  Device._stopped = true;
   if (Device.TIMEOUT) {
     clearTimeout(Device.TIMEOUT);
     delete Device.TIMEOUT;
@@ -172,6 +173,9 @@ Device.poll = function(commandHandler, deviceStateGetter) {
 };
 
 Device.receivedCommands = function(commandHandler, deviceStateGetter, commands) {
+  if (Device._stopped)
+    return;
+
   if ('commands' in commands) {
     commands.commands.forEach(function (command) {
       try {
