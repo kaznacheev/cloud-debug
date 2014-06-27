@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>DevTools Bridge Client</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <script src="js/dashboard.js"></script>
+  </head>
+  <body>
+    <div id="device-list">
+      <div id="header" class="table-row"></div>
+      <div id="devices"></div>
+    </div>
+    <div id="controls">
+      <span>
+        <input type="checkbox" id="runInBackground">
+        <label for="runInBackground">Run in background</label>
+      </span>
+      <span>
+        <input type="checkbox" id="runProxyServer">
+        <label for="runProxyServer">Connect</label>
+      </span>
+      <span class="dim">
+        <input type="checkbox" id="runTestDevice">
+        <label for="runTestDevice">Mock device</label>
+      </span>
+      <span class="dim">
+        <input type="checkbox" id="connectToLocalhost">
+        <label for="connectToLocalhost" title="Connect directly to localhost:9222">Bypass GCD</label>
+      </span>
+    </div>
+  </body>
+</html>

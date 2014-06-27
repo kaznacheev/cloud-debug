@@ -9,6 +9,8 @@ function WebRTCSocket(name) {
     this._logDebug = function() {};
 
   this._logInfo('Created');
+
+  this._status = {};
 }
 
 WebRTCSocket.debug = false;
@@ -47,7 +49,12 @@ WebRTCSocket.prototype = {
   send: function(data) {
     if (!this._dataChannel)
       return;
+    if (this._dataChannel.readyState != 'open') {
+      this._logError('Data channel cannot send in state ' + this._dataChannel.readyState);
+      return;
+    }
     this._logDebug('Data channel sent ' + data.byteLength + ' bytes');
+    this._status.sent += data.byteLength;
     this._dataChannel.send(data);
   },
 
@@ -77,6 +84,12 @@ WebRTCSocket.prototype = {
         new RTCIceCandidate(messageObj),
         this._success("addIceCandidate"),
         this._failure("addIceCandidate"));
+  },
+
+  getStatus: function() {
+    this._status.ice = this._peerConnection.iceConnectionState;
+    this._status.data = this._dataChannel.readyState;
+    return this._status;
   },
 
   _onIceCandidate: function(event)
@@ -112,6 +125,8 @@ WebRTCSocket.prototype = {
       this._dataChannel.close();
       return;
     }
+    this._status.sent = 0;
+    this._status.received = 0;
     if (this.onopen)
       this.onopen();
   },
@@ -130,9 +145,11 @@ WebRTCSocket.prototype = {
   },
 
   _onDataChannelMessage: function(event) {
-    this._logDebug('Data channel received ' + event.data.byteLength + ' bytes');
+    var data = event.data;
+    this._logDebug('Data channel received ' + data.byteLength + ' bytes');
+    this._status.received += data.byteLength;
     if (this.onmessage)
-      this.onmessage(event.data);
+      this.onmessage(data);
   },
 
   _success: function(message) {

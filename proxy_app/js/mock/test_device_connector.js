@@ -1,5 +1,6 @@
-function TestDeviceConnector() {
+function TestDeviceConnector(updateDashboardFunc) {
   this._connection = new TestDeviceConnector.Connection();
+  this._interval = setInterval(updateDashboardFunc, 1000);
 }
 
 TestDeviceConnector.DEVICE_ID = "Loopback";
@@ -8,6 +9,7 @@ TestDeviceConnector.SOCKET_NAME = "chrome_devtools_remote";
 
 TestDeviceConnector.prototype = {
   stop: function() {
+    clearInterval(this._interval);
     TCP.Socket.getByOwner(this).forEach(function(socket) {
       socket.close();
     });
@@ -25,7 +27,13 @@ TestDeviceConnector.prototype = {
   }
 };
 
-TestDeviceConnector.Connection = function() {};
+TestDeviceConnector.Connection = function() {
+  this._status = {
+    data: 'open',
+    connected: 0,
+    refused: 0
+  };
+};
 
 TestDeviceConnector.Connection.prototype = {
   isConnected: function() {
@@ -45,10 +53,22 @@ TestDeviceConnector.Connection.prototype = {
   },
 
   connect: function(socketName, clientId, callback) {
+    var respond = function(socket) {
+      if (socket)
+        this._status.connected++;
+      else
+        this._status.refused++;
+      callback(socket);
+    }.bind(this);
+
     if (socketName == TestDeviceConnector.SOCKET_NAME)
-      TCP.Socket.connect("127.0.0.1", 9222, this, callback);
+      TCP.Socket.connect("127.0.0.1", 9222, this, respond);
     else
-      callback();
+      respond();
+  },
+
+  getStatus: function() {
+    return this._status;
   },
 
   __proto__: Object.prototype

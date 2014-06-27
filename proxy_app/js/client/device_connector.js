@@ -1,4 +1,5 @@
-function DeviceConnector() {
+function DeviceConnector(updateDashboard) {
+  this._updateDashboard = updateDashboard;
   this._connections = {};
 
   var xhr = new XMLHttpRequest();
@@ -87,6 +88,7 @@ DeviceConnector.prototype = {
     }.bind(this));
 
     this._timeout = setTimeout(this._queryDevices.bind(this), 1000);
+    this._updateDashboard();
   }
 };
 
@@ -124,6 +126,8 @@ DeviceConnector.Connection = function(registry, resource, iceServersConfig) {
   this._tunnels = {};
 
   this._sockets = [];
+
+  this._status = {};
 
   this.update(resource);
 };
@@ -242,6 +246,18 @@ DeviceConnector.Connection.prototype = {
       this._signalingHandler.poll();
   },
 
+  getStatus: function() {
+    var result = {};
+    function mergeMap(to, from) {
+      for (var key in from)
+        if (from.hasOwnProperty(key))
+          to[key] = from[key];
+    }
+    mergeMap(result, this._webrtcConnection.getStatus());
+    mergeMap(result, this._status);
+    return result;
+  },
+
   _sendOpen: function(clientId, socketName) {
     this._logDebug('Tunnel ' + clientId + ' connecting');
     this._send(clientId, DeviceConnector.Connection.OPEN, socketName);
@@ -258,6 +274,13 @@ DeviceConnector.Connection.prototype = {
   },
 
   _exchangeSignaling: function(message, successCallback, errorCallback) {
+    var reportError = function(status) {
+      this._logError("GCD error " + status);
+      this._status.gcd = status;
+      if (errorCallback)
+        errorCallback(status);
+    }.bind(this);
+
     User.sendCommand(
         this._id,
         "base._connect",
@@ -265,19 +288,25 @@ DeviceConnector.Connection.prototype = {
           '_message': message
         },
         function(response) {
-          if (response.state == "done" && response.results) {
-            if (successCallback)
-              successCallback(response.results._response);
-          } else if (errorCallback) {
-            errorCallback();
+          if (response.state != "done") {
+            reportError("state=" + response.state)
+          } else if (!response.results) {
+            reportError("bad response")
+          } else if (successCallback) {
+            this._status.gcd = 'OK';
+            successCallback(response.results._response);
           }
-        },
-        errorCallback);
+        }.bind(this),
+        function(status) {
+          reportError("HTTP " + status);
+        });
   },
 
   _onConnectionOpen: function() {
     this._logInfo('Device connection open');
     this._connected = true;
+    this._status.connected = 0;
+    this._status.refused = 0;
   },
 
   _onConnectionMessage: function(buffer) {
@@ -299,6 +328,7 @@ DeviceConnector.Connection.prototype = {
         if (tunnel) {
           logError('already exists (OPEN)');
         } else  if (openCallback) {
+          this._status.connected++;
           logDebug('created');
           tunnel = new DeviceConnector.Connection.Tunnel();
           tunnel.oncloseinternal = this._onTunnelClosedByClient.bind(this, clientId);
@@ -311,6 +341,7 @@ DeviceConnector.Connection.prototype = {
         break;
       
       case DeviceConnector.Connection.OPEN_FAIL:
+        this._status.refused++;
         if (openCallback) {
           logDebug('failed to connect');
           openCallback();
