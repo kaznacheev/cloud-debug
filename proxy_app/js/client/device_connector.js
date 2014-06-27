@@ -1,5 +1,4 @@
-function DeviceConnector(updateDashboard) {
-  this._updateDashboard = updateDashboard;
+function DeviceConnector() {
   this._connections = {};
 
   var xhr = new XMLHttpRequest();
@@ -42,7 +41,7 @@ DeviceConnector.prototype = {
       clearTimeout(this._timeout);
 
     this.getDeviceIds().forEach(function(id) {
-      this._connections[id].close();
+      this._connections[id].stop();
     }.bind(this));
   },
 
@@ -76,26 +75,26 @@ DeviceConnector.prototype = {
         if (this._connections[id]) {
           this._connections[id].update(deviceResource);
         } else {
-          new DeviceConnector.Connection(this._connections, deviceResource, this._iceServersConfig);
+          this._connections[id] = new DeviceConnector.Connection(deviceResource, this._iceServersConfig);
         }
       }.bind(this));
     }
 
     oldDeviceIds.forEach(function(id) {
       if (newDeviceIds.indexOf(id) < 0) {
-        this._connections[id].close();
+        this._connections[id].stop();
+        delete this._connections[id];
       }
     }.bind(this));
 
     this._timeout = setTimeout(this._queryDevices.bind(this), 1000);
-    this._updateDashboard();
   }
 };
 
-DeviceConnector.Connection = function(registry, resource, iceServersConfig) {
-  this._registry = registry;
+DeviceConnector.Connection = function(resource, iceServersConfig) {
   this._id = resource.id;
   this._displayName = resource.displayName;
+  this._iceServersConfig = iceServersConfig;
 
   var logPrefix = "Connection to " + this._displayName + ":";
   this._logInfo = console.info.bind(console, logPrefix);
@@ -105,25 +104,9 @@ DeviceConnector.Connection = function(registry, resource, iceServersConfig) {
   else
     this._logDebug = function() {};
 
-  if (this._registry[this._id]) {
-    this._logError('Connection already exists');
-    return;
-  }
+  this._logInfo('Created');
 
-  this._registry[this._id] = this;
-
-  this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
-  this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
-  this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
-  this._webrtcConnection.onclose = this.close.bind(this);
-  
-  this._signalingHandler = new WebRTCClientSocket.SignalingHandler(
-      this._webrtcConnection, this._exchangeSignaling.bind(this));
-
-  this._webrtcConnection.connect(iceServersConfig);
-  
-  this._pendingOpen = {};
-  this._tunnels = {};
+  this.connect();
 
   this._sockets = [];
 
@@ -185,20 +168,26 @@ DeviceConnector.Connection.parsePacketPayload = function(buffer) {
 };
 
 DeviceConnector.Connection.prototype = {
-  close: function() {
-    if (this._closing)
-      return;
-    this._logInfo('Device connection closed');
-    this._closing = true;
-    this._connected = false;
+  connect: function() {
+    this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
+    this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
+    this._webrtcConnection.onclose = this._onConnectionClosed.bind(this);
+    this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
 
-    if (!this._registry[this._id]) {
-      this._logError('Connection does not exist');
-      return;
-    }
-    delete this._registry[this._id];
-    this._webrtcConnection.close();
-    this._signalingHandler.sendCloseSignal();
+    this._signalingHandler = new WebRTCClientSocket.SignalingHandler(
+        this._webrtcConnection, this._exchangeSignaling.bind(this));
+
+    this._webrtcConnection.connect(this._iceServersConfig);
+
+    this._pendingOpen = {};
+    this._tunnels = {};
+  },
+
+  stop: function() {
+    this._logInfo('Destroyed');
+    this._connected = false;
+    if (!this._disconnected)
+      this._webrtcConnection.close();
   },
 
   isConnected: function () {
@@ -217,7 +206,7 @@ DeviceConnector.Connection.prototype = {
     return this._sockets;
   },
 
-  connect: function (socketName, clientId, callback) {
+  createTunnel: function (socketName, clientId, callback) {
     if (!this._connected || this._tunnels[clientId] || this._pendingOpen[clientId]) {
       var message = 'Tunnel ' + clientId + ' failed to connect';
       if (!this._connected)
@@ -234,6 +223,11 @@ DeviceConnector.Connection.prototype = {
   },
 
   update: function(resource) {
+    if (this._disconnected) {
+      this._disconnected = false;
+      this.connect();
+    }
+
     var vendorState = {};
     try {
       resource.state.base.vendorState.value.forEach(function(item) {
@@ -289,7 +283,7 @@ DeviceConnector.Connection.prototype = {
         },
         function(response) {
           if (response.state != "done") {
-            reportError("state=" + response.state)
+            reportError(response.state)
           } else if (!response.results) {
             reportError("bad response")
           } else if (successCallback) {
@@ -307,6 +301,23 @@ DeviceConnector.Connection.prototype = {
     this._connected = true;
     this._status.connected = 0;
     this._status.refused = 0;
+  },
+
+  _onConnectionClosed: function() {
+    this._connected = false;
+    this._disconnected = true;
+
+    for (var clientId in this._tunnels)
+      if (this._tunnels.hasOwnProperty(clientId))
+        this._tunnels[clientId].close();
+    this._tunnels = {};
+
+    for (var clientId in this._pendingOpen)
+      if (this._pendingOpen.hasOwnProperty(clientId))
+        this._pendingOpen[clientId]();
+    this._pendingOpen = {};
+
+    this._signalingHandler.sendCloseSignal();
   },
 
   _onConnectionMessage: function(buffer) {

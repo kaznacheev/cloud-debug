@@ -24,6 +24,15 @@ onload = function() {
   setupSettingCheckbox('connectToLocalhost');
 
   createRowCells(document.getElementById('header'), true);
+
+  setInterval(
+      function() {
+        chrome.runtime.getBackgroundPage(function(background) {
+          if (background.connector)
+            updateDashboard(background.connector);
+        });
+      },
+      1000);
 };
 
 function createChild(parent, className, opt_content) {

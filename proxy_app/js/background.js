@@ -51,9 +51,9 @@ var connector;
 
 function createProxyServer() {
   if (window[CONNECT_LOCALHOST_KEY])
-    connector = new TestDeviceConnector(updateDashboard);
+    connector = new TestDeviceConnector();
   else
-    connector = new DeviceConnector(updateDashboard);
+    connector = new DeviceConnector();
 
   var LOCAL_HOST = "127.0.0.1";
   var ADB_PORT = 5037;
@@ -65,8 +65,6 @@ function deleteProxyServer() {
   server = null;
   connector.stop();
   connector = null;
-
-  updateDashboard();
 }
 
 chrome.app.runtime.onLaunched.addListener(function() {
@@ -81,23 +79,11 @@ chrome.app.runtime.onLaunched.addListener(function() {
       onWindowOpen);
 });
 
-var dashboardWindow;
-
-function updateDashboard() {
-  if (dashboardWindow &&
-      dashboardWindow.contentWindow.updateDashboard &&
-      connector)
-    dashboardWindow.contentWindow.updateDashboard(connector);
-}
-
 function onWindowOpen(win) {
-  dashboardWindow = win;
   win.onClosed.addListener(onWindowClosed);
 
-  if (window[RUN_IN_BACKGROUND_KEY]) {
-    updateDashboard();
+  if (window[RUN_IN_BACKGROUND_KEY])
     return;
-  }
 
   if (window[RUN_PROXY_KEY])
     createProxyServer();
@@ -107,8 +93,6 @@ function onWindowOpen(win) {
 }
 
 function onWindowClosed() {
-  dashboardWindow = null;
-
   if (window[RUN_IN_BACKGROUND_KEY])
     return;
 

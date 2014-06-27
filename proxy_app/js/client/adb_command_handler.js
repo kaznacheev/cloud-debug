@@ -150,7 +150,7 @@ AdbCommandHandler.prototype = {
   },
 
   _createTunnel: function(deviceConnection, deviceSocketName) {
-    deviceConnection.connect(deviceSocketName, this._clientSocket._id, function (tunnelSocket) {
+    deviceConnection.createTunnel(deviceSocketName, this._clientSocket._id, function (tunnelSocket) {
       if (!tunnelSocket) {
         this._replyFAIL();
         return;

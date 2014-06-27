@@ -87,8 +87,10 @@ WebRTCSocket.prototype = {
   },
 
   getStatus: function() {
-    this._status.ice = this._peerConnection.iceConnectionState;
-    this._status.data = this._dataChannel.readyState;
+    if (this._peerConnection)
+      this._status.ice = this._peerConnection.iceConnectionState;
+    if (this._dataChannel)
+      this._status.data =  this._dataChannel.readyState;
     return this._status;
   },
 
@@ -110,6 +112,9 @@ WebRTCSocket.prototype = {
 
   _onIceConnectionState: function(event) {
     this._logInfo('ICE connection state: ' + event.currentTarget.iceConnectionState);
+    this._status.ice = this._peerConnection.iceConnectionState;
+    if (this._peerConnection.iceConnectionState == 'disconnected')
+      this._peerConnection = null;
   },
 
   _onError: function(context, error) {
@@ -133,6 +138,7 @@ WebRTCSocket.prototype = {
 
   _onDataChannelClose: function() {
     this._logInfo('Data channel closed');
+    this._status.data = this._dataChannel.readyState;
     this._dataChannel = null;
     this.close();
   },

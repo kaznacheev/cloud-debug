@@ -1,6 +1,5 @@
-function TestDeviceConnector(updateDashboardFunc) {
+function TestDeviceConnector() {
   this._connection = new TestDeviceConnector.Connection();
-  this._interval = setInterval(updateDashboardFunc, 1000);
 }
 
 TestDeviceConnector.DEVICE_ID = "Loopback";
@@ -9,7 +8,6 @@ TestDeviceConnector.SOCKET_NAME = "chrome_devtools_remote";
 
 TestDeviceConnector.prototype = {
   stop: function() {
-    clearInterval(this._interval);
     TCP.Socket.getByOwner(this).forEach(function(socket) {
       socket.close();
     });
@@ -41,7 +39,7 @@ TestDeviceConnector.Connection.prototype = {
   },
 
   getDeviceName: function() {
-    return "Cloud Device";
+    return "Test Device";
   },
 
   getScreenSize: function() {
@@ -52,7 +50,7 @@ TestDeviceConnector.Connection.prototype = {
     return [TestDeviceConnector.SOCKET_NAME];
   },
 
-  connect: function(socketName, clientId, callback) {
+  createTunnel: function(socketName, clientId, callback) {
     var respond = function(socket) {
       if (socket)
         this._status.connected++;
