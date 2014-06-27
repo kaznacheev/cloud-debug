@@ -234,7 +234,7 @@ Device.request = function(method, path, postData, successCallback, errorCallback
 
   if (!errorCallback) {
     errorCallback = function (status) {
-      console.error(method + ' error, path = ' + path + ', status = ' + status);
+      console.error(method + ' error ' + status + ', path = ' + path + ', data = ' + JSON.stringify(postData));
     };
   }
 

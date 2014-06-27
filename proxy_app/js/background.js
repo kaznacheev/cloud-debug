@@ -2,6 +2,7 @@ var RUN_IN_BACKGROUND_KEY = "runInBackground";
 var RUN_PROXY_KEY = "runProxyServer";
 var RUN_DEVICE_KEY = "runTestDevice";
 var CONNECT_LOCALHOST_KEY = "connectToLocalhost";
+var USE_GCD_STAGING_KEY = "useGCDStaging";
 
 function storeSetting(key, on) {
   if (!!window[key] == !!on)
@@ -108,6 +109,7 @@ chrome.storage.local.get(function(items) {
   window[RUN_PROXY_KEY] = items[RUN_PROXY_KEY];
   window[RUN_DEVICE_KEY] = items[RUN_DEVICE_KEY];
   window[CONNECT_LOCALHOST_KEY] = items[CONNECT_LOCALHOST_KEY];
+  window[USE_GCD_STAGING_KEY] = items[USE_GCD_STAGING_KEY];
 
   if (!window[RUN_IN_BACKGROUND_KEY])
     return;

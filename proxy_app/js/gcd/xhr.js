@@ -6,11 +6,14 @@ XHR.HTTP_ERROR_UNAUTHORIZED = 401;
 XHR.HTTP_ERROR_FORBIDDEN = 403;
 
 XHR.OAUTH_URL = "https://accounts.google.com/o/oauth2/token";
-XHR.GCD_URL = "https://www-googleapis-staging.sandbox.google.com/clouddevices/v1/";
-XHR.GCD_UI_URL = "https://gcd-staging.sandbox.google.com/clouddevices";
+XHR.GCD_URL = "https://www.googleapis.com/clouddevices/v1/";
+XHR.GCD_STAGING_URL = "https://www-googleapis-staging.sandbox.google.com/clouddevices/v1/";
 
 XHR.getCloudDevicesUrl = function(path) {
-  return XHR.GCD_URL + path;
+  if (window.useGCDStaging)
+    return XHR.GCD_STAGING_URL + path;
+  else
+    return XHR.GCD_URL + path;
 };
 
 XHR.requestWithToken = function(method, url, postData, successCallback, errorCallback, token) {
@@ -18,7 +21,13 @@ XHR.requestWithToken = function(method, url, postData, successCallback, errorCal
   xhr.open(method, url);
   xhr.setRequestHeader("Content-Type", "application/json");
   xhr.setRequestHeader("Authorization", "Bearer " + token);
-  xhr.onload = XHR._parseJSONResponse.bind(null, xhr, successCallback, errorCallback);
+  var requestTime = Date.now();
+  xhr.onload = function() {
+    var elapsed = (Date.now() - requestTime) / 1000;
+    if (elapsed > 5)
+      console.warn(method + ' request took ' + elapsed.toFixed(1) + 's');
+    XHR._parseJSONResponse(xhr, successCallback, errorCallback);
+  };
   if (postData && (typeof postData == 'object'))
     postData = JSON.stringify(postData);
   xhr.send(postData);
