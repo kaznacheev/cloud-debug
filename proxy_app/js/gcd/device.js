@@ -30,8 +30,8 @@ Device.start = function(commandHandler, deviceStateGetter, successCallback, erro
   User.requestDevices(function(response) {
     chrome.storage.local.get(function (items) {
       function started() {
-        Device.poll(commandHandler, deviceStateGetter);
         successCallback();
+        Device.poll(commandHandler, deviceStateGetter);
       }
 
       var deviceList = response.devices || [];

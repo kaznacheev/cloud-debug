@@ -1,41 +1,47 @@
-var TestDevice = {};
+var ProxyDevice = {};
 
-TestDevice.SOCKET_LIST = "chrome_devtools_remote_9222";
+ProxyDevice.start = function(socketList, localSocketFactory, callback) {
+  ProxyDevice._socketList = socketList;
 
-TestDevice.start = function() {
-  TestDevice._localSockets = {};
-
-  TestDevice._signalingHandler = new WebRTCServerSocket.SignalingHandler();
-  TestDevice._tunnelHandler = new TunnelHandler(TestDevice._signalingHandler);
-  
   Device.start(
-      TestDevice.handleCommand,
-      TestDevice.getDeviceState,
-      function() { console.log('Initialized test device'); },
-      function() { console.error('Cannot initialize test device'); });
+      ProxyDevice.handleCommand,
+      ProxyDevice.getDeviceState,
+      function() {
+        var tunnelHandler = new TunnelHandler(localSocketFactory);
+        ProxyDevice._signalingHandler = new WebRTCServerSocket.SignalingHandler();
+        ProxyDevice._signalingHandler.onaccept = tunnelHandler.openTunnel.bind(tunnelHandler);
+        ProxyDevice._signalingHandler.onclose = tunnelHandler.closeTunnel.bind(tunnelHandler);
+        console.log("Started proxy device");
+        callback(true);
+      },
+      function() {
+        console.error("Could not start proxy device");
+        callback(false);
+      });
 };
 
-TestDevice.stop = function() {
+ProxyDevice.stop = function() {
   Device.stop();
-  TestDevice._signalingHandler.stop();
+  ProxyDevice._signalingHandler.stop();
+  delete ProxyDevice._signalingHandler;
 };
 
-TestDevice.getDeviceState = function() {
+ProxyDevice.getDeviceState = function() {
   var state = {
-    "sockets": TestDevice.SOCKET_LIST
+    "sockets": ProxyDevice._socketList
   };
-  if (TestDevice._signalingHandler.hasPendingSignaling())
+  if (ProxyDevice._signalingHandler.hasPendingSignaling())
     state.hasPendingSignaling = "true";
   return state;
 };
 
-TestDevice.handleCommand = function(name, parameters, patchResultsFunc) {
+ProxyDevice.handleCommand = function(name, parameters, patchResultsFunc) {
   if (name != "base._connect") {
     console.error("Unknown device command: " + name);
     return;
   }
 
-  TestDevice._signalingHandler.processIncoming(
+  ProxyDevice._signalingHandler.processIncoming(
       parameters._message,
       function(messageObject) {
         patchResultsFunc({
@@ -44,26 +50,24 @@ TestDevice.handleCommand = function(name, parameters, patchResultsFunc) {
       });
 };
 
-function TunnelHandler(serverSignalingHandler) {
-  serverSignalingHandler.onaccept = this._onTunnelCreated.bind(this);
-  serverSignalingHandler.onclose = this._onTunnelClosed.bind(this);
-
+function TunnelHandler(localSocketFactory) {
+  this._localSocketFactory = localSocketFactory;
   this._localSockets = {};
 }
 
 TunnelHandler.debug = false;
 
 TunnelHandler.prototype = {
-  _onTunnelCreated: function(tunnel) {
+  openTunnel: function(tunnel) {
     this._tunnel = tunnel;
     this._tunnel.onmessage = this._onTunnelMessage.bind(this);
   },
   
-  _onTunnelClosed: function() {
+  closeTunnel: function() {
     delete this._tunnel;
-    TCP.Socket.getByOwner(this).forEach(function(socket) {
-      socket.close();
-    });
+    for (var clientId in this._localSockets)
+      if (this._localSockets.hasOwnProperty(clientId))
+        this._localSockets[clientId].close();
   },
   
   _onTunnelMessage: function(buffer) {
@@ -89,15 +93,7 @@ TunnelHandler.prototype = {
           return;
         }
         var socketName = Uint8ArrayToString(new Uint8Array(DeviceConnector.Connection.parsePacketPayload(buffer)));
-        var port;
-        try {
-          port = parseInt(socketName.match('\\d+$')[0]);
-        } catch (e) {
-          logError('failed to connect, invalid socket name: ' + socketName);
-          this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN_FAIL);
-          return;
-        }
-        TCP.Socket.connect("127.0.0.1", port, this, function(socket) {
+        this._localSocketFactory(socketName, function(socket) {
           if (socket) {
             logDebug('connected');
             this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN);
@@ -105,7 +101,7 @@ TunnelHandler.prototype = {
             socket.onclose = this._onLocalSocketClosedItself.bind(this, clientId);
             socket.onmessage = this._onLocalSocketMessage.bind(this, clientId);
           } else {
-            logError('failed to connect');
+            logError('failed to connect to ' + socketName);
             this._sendToTunnel(clientId, DeviceConnector.Connection.OPEN_FAIL);
           }
         }.bind(this));

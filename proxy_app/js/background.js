@@ -20,6 +20,9 @@ function storeSetting(key, on) {
 }
 
 function changeSetting(key, on) {
+  if (key == RUN_DEVICE_KEY && deviceStarting)
+    return false;
+
   if (!storeSetting(key, on))
     return;
 
@@ -33,9 +36,9 @@ function changeSetting(key, on) {
 
     case RUN_DEVICE_KEY:
       if (on)
-        TestDevice.start();
+        startProxyDevice();
       else
-        TestDevice.stop();
+        stopProxyDevice();
       break;
 
     case CONNECT_LOCALHOST_KEY:
@@ -45,6 +48,8 @@ function changeSetting(key, on) {
       }
       break;
   }
+
+  return true;
 }
 
 var server;
@@ -68,6 +73,42 @@ function deleteProxyServer() {
   connector = null;
 }
 
+
+function createSocket(socketName, callback) {
+  var port;
+  try {
+    port = parseInt(socketName.match('\\d+$')[0]);
+  } catch (e) {
+    callback();
+    return;
+  }
+  TCP.Socket.connect("127.0.0.1", port, ProxyDevice, callback);
+}
+
+var deviceStarting;
+
+function startProxyDevice() {
+  if (deviceStarting)
+    return;
+  deviceStarting = true;
+  ProxyDevice.start(
+      "chrome_devtools_remote_9222",
+      createSocket,
+      function(success) {
+        deviceStarting = false;
+        if (success)
+          return;
+        storeSetting(RUN_DEVICE_KEY, false);
+        if (dashboardWindow && dashboardWindow.contentDocument) {
+          dashboardWindow.contentDocument.getElementById(RUN_DEVICE_KEY).checked = false;
+        }
+      });
+}
+
+function stopProxyDevice() {
+  ProxyDevice.stop();
+}
+
 chrome.app.runtime.onLaunched.addListener(function() {
   chrome.app.window.create('dashboard.html',
       {
@@ -80,7 +121,11 @@ chrome.app.runtime.onLaunched.addListener(function() {
       onWindowOpen);
 });
 
+var dashboardWindow;
+
 function onWindowOpen(win) {
+  dashboardWindow = win;
+
   win.onClosed.addListener(onWindowClosed);
 
   if (window[RUN_IN_BACKGROUND_KEY])
@@ -90,10 +135,12 @@ function onWindowOpen(win) {
     createProxyServer();
 
   if (window[RUN_DEVICE_KEY])
-    TestDevice.start();
+    startProxyDevice();
 }
 
 function onWindowClosed() {
+  dashboardWindow = null;
+
   if (window[RUN_IN_BACKGROUND_KEY])
     return;
 
@@ -101,7 +148,7 @@ function onWindowClosed() {
     deleteProxyServer();
 
   if (window[RUN_DEVICE_KEY])
-    TestDevice.stop();
+    stopProxyDevice();
 }
 
 chrome.storage.local.get(function(items) {
@@ -118,5 +165,5 @@ chrome.storage.local.get(function(items) {
     createProxyServer();
 
   if (window[RUN_DEVICE_KEY])
-    TestDevice.start();
+    startProxyDevice();
 });

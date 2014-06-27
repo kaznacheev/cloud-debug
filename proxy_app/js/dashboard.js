@@ -10,7 +10,9 @@ onload = function() {
     checkbox.addEventListener('click', function(event) {
       chrome.runtime.getBackgroundPage(function(background) {
         try {
-          background.changeSetting(key, event.target.checked);
+          var on = event.target.checked;
+          if (!background.changeSetting(key, on))
+            event.target.checked = !on;
         } catch (e) {
           console.error(e.stack);
         }
