@@ -63,17 +63,22 @@ TCP.Socket.getByOwner = function(owner) {
 };
 
 TCP.Socket.connect = function(peerAddress, peerPort, owner, callback) {
+  var logError = console.error.bind(console, "Connecting to " + peerAddress + ":" + peerPort);
   chrome.sockets.tcp.create(function(createInfo) {
     chrome.sockets.tcp.connect(createInfo.socketId, peerAddress, peerPort, function(result) {
       try {
-        if (result < 0)
+        if (chrome.runtime.lastError) {
+          logError(chrome.runtime.lastError.message);
           callback();
-        else
+        } else if (result < 0) {
+          callback();
+        } else {
           callback(new TCP.Socket(createInfo.socketId, owner));
+        }
       } catch (e) {
-        this._logError(e.stack);
+        logError(e.stack);
       }
-    });
+    }.bind(this));
   });
 };
 
