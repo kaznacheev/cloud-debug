@@ -151,11 +151,10 @@ TCP.Socket.prototype = {
   }
 };
 
-TCP.Server = function(address, port, handlerClass, handlerContext) {
+TCP.Server = function(address, port, handler) {
   this._address = address;
   this._port = port;
-  this._handlerClass = handlerClass;
-  this._handlerContext = handlerContext;
+  this._handler = handler;
 
   var logPrefix = address + ":" + port;
   this._logInfo = console.info.bind(console, logPrefix);
@@ -206,12 +205,13 @@ TCP.Server.prototype = {
       return;
     var socket = new TCP.Socket(acceptInfo.clientSocketId, this);
     try {
-      new this._handlerClass(this._handlerContext, socket);
+      this._handler(socket);
     } catch (e) {
       socket._logError("Handler constructor failed", e.stack);
       socket.close();
       return;
     }
-    chrome.sockets.tcp.setPaused(acceptInfo.clientSocketId, false, function() {});
+    if (!socket._closing)
+      chrome.sockets.tcp.setPaused(acceptInfo.clientSocketId, false, function() {});
   }
 };

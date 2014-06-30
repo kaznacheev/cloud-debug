@@ -23,6 +23,7 @@
         "js/lib/xhr.js",
         "js/client/adb_command_handler.js",
         "js/client/device_connector.js",
+        "js/client/http_proxy_handler.js",
         "js/client/test_device_connector.js",
         "js/server/proxy_device.js",
         "keys.js"

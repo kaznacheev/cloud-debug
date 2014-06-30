@@ -2,6 +2,7 @@ var RUN_IN_BACKGROUND_KEY = "runInBackground";
 var RUN_PROXY_KEY = "runProxyServer";
 var RUN_DEVICE_KEY = "runTestDevice";
 var CONNECT_LOCALHOST_KEY = "connectToLocalhost";
+var SERVE_HTTP_KEY = "serveHttp";
 var USE_GCD_STAGING_KEY = "useGCDStaging";
 
 function storeSetting(key, on) {
@@ -42,6 +43,7 @@ function changeSetting(key, on) {
       break;
 
     case CONNECT_LOCALHOST_KEY:
+    case SERVE_HTTP_KEY:
       if (window[RUN_PROXY_KEY]) {
         deleteProxyServer();
         createProxyServer();
@@ -62,8 +64,12 @@ function createProxyServer() {
     connector = new DeviceConnector();
 
   var LOCAL_HOST = "127.0.0.1";
-  var ADB_PORT = 5037;
-  server = new TCP.Server(LOCAL_HOST, ADB_PORT, AdbCommandHandler, connector);
+  if (window[SERVE_HTTP_KEY]) {
+    server = new TCP.Server(LOCAL_HOST, 9222, HttpProxyHandler.create.bind(null, connector));
+  } else {
+    var ADB_PORT = 5037;
+    server = new TCP.Server(LOCAL_HOST, ADB_PORT, AdbCommandHandler.create.bind(null, connector));
+  }
 }
 
 function deleteProxyServer() {
@@ -156,6 +162,7 @@ chrome.storage.local.get(function(items) {
   window[RUN_PROXY_KEY] = items[RUN_PROXY_KEY];
   window[RUN_DEVICE_KEY] = items[RUN_DEVICE_KEY];
   window[CONNECT_LOCALHOST_KEY] = items[CONNECT_LOCALHOST_KEY];
+  window[SERVE_HTTP_KEY] = items[SERVE_HTTP_KEY];
   window[USE_GCD_STAGING_KEY] = items[USE_GCD_STAGING_KEY];
 
   if (!window[RUN_IN_BACKGROUND_KEY])

@@ -24,6 +24,7 @@ onload = function() {
   setupSettingCheckbox('runProxyServer');
   setupSettingCheckbox('runTestDevice');
   setupSettingCheckbox('connectToLocalhost');
+  setupSettingCheckbox('serveHttp');
   setupSettingCheckbox('useGCDStaging');
 
   createRowCells(document.getElementById('header'), true);

@@ -7,6 +7,10 @@ function AdbCommandHandler(deviceConnectionPool, socket) {
   this._processCommand = this._processHostCommand.bind(this);
 }
 
+AdbCommandHandler.create = function(deviceConnectionPool, socket) {
+  return new AdbCommandHandler(deviceConnectionPool, socket);
+};
+
 AdbCommandHandler.LENGTH_MARKER_SIZE = 4;
 AdbCommandHandler.RESULT_SIZE = 4;
 
