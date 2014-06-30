@@ -227,6 +227,6 @@ DeviceConnector.Connection.prototype = {
       delete this._tunnelClient;
     }
     this._disconnected = true;
-    this._signalingHandler.sendCloseSignal();
+    this._signalingHandler.stop();
   }
 };
