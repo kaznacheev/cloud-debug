@@ -73,6 +73,6 @@ XHR._parseJSONResponse = function(xhr, successCallback, errorCallback) {
   if (xhr.status == XHR.HTTP_OK) {
     successCallback(json);
   } else if (errorCallback) {
-    errorCallback(xhr.status);
+    errorCallback(xhr.status, xhr.response);
   }
 };

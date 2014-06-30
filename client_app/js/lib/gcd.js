@@ -250,8 +250,9 @@ GCD.Device.request = function(method, path, postData, successCallback, errorCall
       successCallback);
 
   if (!errorCallback) {
-    errorCallback = function (status) {
-      console.error(method + ' error ' + status + ', path = ' + path + ', data = ' + JSON.stringify(postData));
+    errorCallback = function(status, response) {
+      console.error(method + ' error ' + status + ', path = ' + path +
+          ', data = ' + JSON.stringify(postData) + ', response = ' + response);
     };
   }
 
@@ -294,8 +295,9 @@ GCD.User = {};
 GCD.User.request = function(
     method, path, postData, successCallback, errorCallback) {
   if (!errorCallback) {
-    errorCallback = function (status) {
-      console.error(method + ' error ' + status + ' path = ' + path + ', data = ' + JSON.stringify(postData));
+    errorCallback = function (status, response) {
+      console.error(method + ' error ' + status + ', path = ' + path +
+          ', data = ' + JSON.stringify(postData) + ', response = ' + response);
     };
   }
 
