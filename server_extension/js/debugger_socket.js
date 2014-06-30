@@ -42,11 +42,12 @@ DebuggerSocket.prototype = {
       this._respond400();
       return;
     }
-    var tokens = lines[0].split(' ');
-    if (tokens.length != 3 || tokens[0].toUpperCase() != 'GET') {
+    var requestParams = lines[0].split(' ');
+    if (requestParams.length != 3 || requestParams[0].toUpperCase() != 'GET') {
       this._respond400();
       return;
     }
+    var path = requestParams[1];
     var headers = {};
     lines.slice(1).forEach(function (line) {
       var parts = line.split(":");
@@ -55,7 +56,6 @@ DebuggerSocket.prototype = {
       }
     });
 
-    var path = tokens[1];
     if (headers["Upgrade"] == "WebSocket")
       this._handleWebSocket(path, headers);
     else
@@ -80,8 +80,11 @@ DebuggerSocket.prototype = {
     response += "\r\n";
     if (body)
       response += body;
-//    console.log(response);
     this._respond(ByteArray.fromString(response).buffer);
+  },
+
+  _respond101: function() {
+    this._respondHTTP(101, "WebSocket Protocol Handshake");
   },
 
   _respond200: function (body) {
@@ -98,25 +101,19 @@ DebuggerSocket.prototype = {
   },
 
   _respond404: function (message) {
-    console.error("404: " + message);
     this._respondHTTP(404, "Not found", null, message);
   },
 
-  _respond101: function() {
-    this._respondHTTP(101, "WebSocket Protocol Handshake");
-  },
-
   _handleGet: function (path, headers) {
-//    console.log('GET ' + path, headers);
     if (path == '/json/version') {
-      VersionInfo.request(function (version) {
+      VersionInfo.request(function(version) {
         this._respond200(version);
       }.bind(this));
       return;
     }
 
     if (path == '/json' || path == '/json/list') {
-      VersionInfo.request(function (version) {
+      VersionInfo.request(function(version) {
         var frontendUrl = DebuggerSocket.FRONTEND_URL.replace("{REV}", version["WebKit-Revision"]);
         chrome.debugger.getTargets(function (targets) {
           var list = targets.map(function (target) {
@@ -155,7 +152,7 @@ DebuggerSocket.prototype = {
         })[0];
 
         if (!target || !target.tabId) {
-          this._respond404();
+          this._respond404("Target not found");
           return;
         }
 
@@ -163,11 +160,6 @@ DebuggerSocket.prototype = {
           case 'activate':
             chrome.tabs.update(target.tabId, {active: true});
             this._respond200('Target activated');
-            break;
-
-          case 'reload':
-            chrome.tabs.reload(target.tabId);
-            this._respond200();
             break;
 
           case 'close':
@@ -205,7 +197,7 @@ DebuggerSocket.prototype = {
       return;
     }
 
-    console.log('Debugger attached');
+    console.debug('Debugger attached');
     if (this._closing) {
       chrome.debugger.detach(debuggee, function() {});
       return;
@@ -224,7 +216,7 @@ DebuggerSocket.prototype = {
     if (this._debuggee.targetId != debuggee.targetId)
       return;
 
-    console.log('Debugger detached');
+    console.debug('Debugger detached');
     this.close();
   },
 
@@ -239,11 +231,17 @@ DebuggerSocket.prototype = {
   },
 
   _parseWebSocket: function(arrayBuffer) {
-    console.log("_parseWebSocket", arrayBuffer.byteLength);
     this._byteBuffer = ByteArray.concat(this._byteBuffer, new Uint8Array(arrayBuffer));
 
     for(;;) {
-      var result = Hybi17.decode(this._byteBuffer);
+      var result;
+      try {
+        result = Hybi17.decode(this._byteBuffer);
+      } catch (e) {
+        console.error('Hybi17 decode error', e.stack);
+        this.close();
+        return;
+      }
       if (!result)
         return;
 
@@ -255,6 +253,7 @@ DebuggerSocket.prototype = {
         messageObj = JSON.parse(message);
       } catch (e) {
         console.error('Cannot parse ' + message, e.stack);
+        this.close();
         return;
       }
       chrome.debugger.sendCommand(
@@ -270,14 +269,6 @@ DebuggerSocket.prototype = {
   },
 
   _sendWebSocketFrame: function(message) {
-    var encoded = Hybi17.encode(ByteArray.fromString(message));
-    var result = Hybi17.decode(encoded);
-    console.log("Encoded " + encoded.length + " bytes");
-    if (result) {
-      var decoded = ByteArray.toString(result.data);
-      console.log("Decoded", decoded.length, decoded);
-    } else
-      console.error("Cannot decode");
     this._respond(Hybi17.encode(ByteArray.fromString(message)).buffer);
   }
 };
@@ -314,8 +305,7 @@ Hybi17.encode = function(data) {
 
   var mask = frame.subarray(dataStart - 4, dataStart);
   for (var i = 0; i != mask.length; ++i)
-//    mask[i] = Math.ceil(Math.random() * 0xFF);
-    mask[i] = 0;
+    mask[i] = Math.ceil(Math.random() * 0xFF);
 
   for (var i = 0; i != data.length; ++i)
     frame[dataStart + i] = data[i] ^ mask[i % 4];
@@ -330,10 +320,8 @@ Hybi17.decode = function(frame) {
   var fin = (frame[0] & 128) >> 7;
   var op = frame[0] & 15;
 
-  if (fin != 1 || op != 1) {
-    console.error('Cannot parse WebSocket frame, first byte = ' + frame[0].toString(16));
-    return null;
-  }
+  if (fin != 1 || op != 1)
+    throw new Error('Unsupported first byte = ' + frame[0].toString(16));
 
   var lengthFieldSize;
   var dataLength = frame[1] & 127;

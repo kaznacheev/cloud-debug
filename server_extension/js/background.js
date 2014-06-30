@@ -1,17 +1,18 @@
+// Simulate App v2 chrome.storage.local API which is required by gcd.js
 chrome.storage = {
   local: {
-    set: function (items) {
+    set: function(items) {
       for (var key in items)
         if (items.hasOwnProperty(key))
           localStorage[key] = items[key];
     },
 
-    remove: function (key) {
-      delete localStorage[key];
+    get: function(callback) {
+      callback(localStorage)
     },
 
-    get: function (callback) {
-      callback(localStorage)
+    remove: function(key) {
+      delete localStorage[key];
     }
   }
 };
@@ -30,11 +31,9 @@ BrowserAction.connect = function() {
   chrome.browserAction.setTitle({title: "Connecting..."});
 
   chrome.browserAction.onClicked.removeListener(BrowserAction.toggle);
-//  chrome.browserAction.setPopup({popup: ""});
 
   function restoreUI() {
     chrome.browserAction.onClicked.addListener(BrowserAction.toggle);
-//    chrome.browserAction.setPopup({popup: "menu.html"});
   }
 
   ProxyDevice.start(
