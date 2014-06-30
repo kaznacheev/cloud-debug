@@ -1,8 +1,7 @@
-rsync -r --delete extension/ deploy
+cd client_app
+zip -r ../client_app-$(date "+%Y_%m_%d_%H_%M_%S").zip *
+cd ..
 
-cat extension/keys.js | sed s/{API_KEY}/$1/ | sed s/{CLIENT_ID}/$2/ > deploy/keys.js
-cat extension/manifest.json | sed s/{CLIENT_ID}/$2/ > deploy/manifest.json
-
-cd deploy
-zip -r ../cloud-debug-$(date "+%Y_%m_%d_%H_%M_%S").zip *
+cd server_extension
+zip -r ../server_extension-$(date "+%Y_%m_%d_%H_%M_%S").zip *
 cd ..
