@@ -114,7 +114,7 @@ chrome.app.runtime.onLaunched.addListener(function() {
       {
         id: "dashboard",
         bounds: {
-          width: 720,
+          width: 800,
           height: 240
         }
       },

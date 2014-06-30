@@ -58,7 +58,7 @@ DeviceConnector.prototype = {
   },
 
   _queryDevices: function() {
-    User.requestDevices(this._receivedDevices.bind(this));
+    GCD.User.requestDevices(this._receivedDevices.bind(this));
   },
 
   _receivedDevices: function(response) {
@@ -106,65 +106,13 @@ DeviceConnector.Connection = function(resource, iceServersConfig) {
 
   this._logInfo('Created');
 
-  this.connect();
-
   this._sockets = [];
 
   this._status = {};
 
   this.update(resource);
-};
 
-DeviceConnector.Connection.OPEN = 1;
-DeviceConnector.Connection.OPEN_FAIL = 2;
-DeviceConnector.Connection.CLOSE = 3;
-DeviceConnector.Connection.DATA = 4;
-
-DeviceConnector.Connection.CLIENT_ID_OFFSET = 0;
-DeviceConnector.Connection.CLIENT_ID_SIZE = 4;
-
-DeviceConnector.Connection.PACKET_TYPE_OFFSET = DeviceConnector.Connection.CLIENT_ID_SIZE;
-DeviceConnector.Connection.PACKET_TYPE_SIZE = 1;
-
-DeviceConnector.Connection.PAYLOAD_OFFSET =
-    DeviceConnector.Connection.CLIENT_ID_SIZE +
-    DeviceConnector.Connection.PACKET_TYPE_SIZE;
-
-DeviceConnector.Connection.buildPacket = function(clientId, type, opt_data) {
-  var bufferSize = DeviceConnector.Connection.PAYLOAD_OFFSET;
-  if (opt_data) {
-    if (typeof opt_data === 'string')
-      bufferSize += opt_data.length;
-    else
-      bufferSize += opt_data.byteLength;
-  }
-
-  var bytes = new Uint8Array(bufferSize);
-  (new Uint32Array(bytes.buffer, DeviceConnector.Connection.CLIENT_ID_OFFSET, 1))[0] = clientId;
-  bytes[DeviceConnector.Connection.PACKET_TYPE_OFFSET] = type;
-
-  if (opt_data) {
-    var payload;
-    if (typeof opt_data == 'string')
-      payload = stringToUint8Array(opt_data);
-    else
-      payload = new Uint8Array(opt_data);
-    bytes.set(payload, DeviceConnector.Connection.PAYLOAD_OFFSET);
-  }
-
-  return bytes.buffer;
-};
-
-DeviceConnector.Connection.parseClientId = function(buffer) {
-  return (new Uint32Array(buffer, DeviceConnector.Connection.CLIENT_ID_OFFSET, 1))[0];
-};
-
-DeviceConnector.Connection.parsePacketType = function(buffer) {
-  return (new Uint8Array(buffer, DeviceConnector.Connection.PACKET_TYPE_OFFSET, 1))[0];
-};
-
-DeviceConnector.Connection.parsePacketPayload = function(buffer) {
-  return buffer.slice(DeviceConnector.Connection.PAYLOAD_OFFSET);
+  this.connect();
 };
 
 DeviceConnector.Connection.prototype = {
@@ -172,26 +120,21 @@ DeviceConnector.Connection.prototype = {
     this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
     this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
     this._webrtcConnection.onclose = this._onConnectionClosed.bind(this);
-    this._webrtcConnection.onmessage = this._onConnectionMessage.bind(this);
 
     this._signalingHandler = new WebRTCClientSocket.SignalingHandler(
         this._webrtcConnection, this._exchangeSignaling.bind(this));
 
     this._webrtcConnection.connect(this._iceServersConfig);
-
-    this._pendingOpen = {};
-    this._tunnels = {};
   },
 
   stop: function() {
     this._logInfo('Destroyed');
-    this._connected = false;
     if (!this._disconnected)
       this._webrtcConnection.close();
   },
 
   isConnected: function () {
-    return this._connected;
+    return this._tunnelClient;
   },
 
   getDeviceName: function () {
@@ -206,20 +149,11 @@ DeviceConnector.Connection.prototype = {
     return this._sockets;
   },
 
-  createTunnel: function (socketName, clientId, callback) {
-    if (!this._connected || this._tunnels[clientId] || this._pendingOpen[clientId]) {
-      var message = 'Tunnel ' + clientId + ' failed to connect';
-      if (!this._connected)
-        this._logDebug(message + ', WebRTC not connected');
-      else if (this._tunnels[clientId])
-        this._logError(message + ', already connected');
-      else
-        this._logError(message + ', already connecting');
+  createTunnel: function(socketName, clientId, callback) {
+    if (this._tunnelClient)
+      this._tunnelClient.connect(socketName, clientId, callback);
+    else
       callback();
-      return;
-    }
-    this._pendingOpen[clientId] = callback;
-    this._sendOpen(clientId, socketName);
   },
 
   update: function(resource) {
@@ -248,23 +182,10 @@ DeviceConnector.Connection.prototype = {
           to[key] = from[key];
     }
     mergeMap(result, this._webrtcConnection.getStatus());
+    if (this._tunnelClient)
+      mergeMap(result, this._tunnelClient.getStatus());
     mergeMap(result, this._status);
     return result;
-  },
-
-  _sendOpen: function(clientId, socketName) {
-    this._logDebug('Tunnel ' + clientId + ' connecting');
-    this._send(clientId, DeviceConnector.Connection.OPEN, socketName);
-  },
-
-  _sendClose: function(clientId) {
-    this._logDebug('Tunnel ' + clientId + ' disconnecting');
-    this._send(clientId, DeviceConnector.Connection.CLOSE);
-  },
-
-  _sendData: function(clientId, data) {
-    this._logDebug('Tunnel ' + clientId + ' sent ' + data.byteLength + ' bytes');
-    this._send(clientId, DeviceConnector.Connection.DATA, data);
   },
 
   _exchangeSignaling: function(message, successCallback, errorCallback) {
@@ -275,7 +196,7 @@ DeviceConnector.Connection.prototype = {
         errorCallback(status);
     }.bind(this);
 
-    User.sendCommand(
+    GCD.User.sendCommand(
         this._id,
         "base._connect",
         {
@@ -297,128 +218,15 @@ DeviceConnector.Connection.prototype = {
   },
 
   _onConnectionOpen: function() {
-    this._logInfo('Device connection open');
-    this._connected = true;
-    this._status.connected = 0;
-    this._status.refused = 0;
+    this._tunnelClient = new SocketTunnel.Client(this._webrtcConnection, this._displayName);
   },
 
   _onConnectionClosed: function() {
-    this._connected = false;
-    this._disconnected = true;
-
-    for (var clientId in this._tunnels)
-      if (this._tunnels.hasOwnProperty(clientId))
-        this._tunnels[clientId].close();
-    this._tunnels = {};
-
-    for (var clientId in this._pendingOpen)
-      if (this._pendingOpen.hasOwnProperty(clientId))
-        this._pendingOpen[clientId]();
-    this._pendingOpen = {};
-
-    this._signalingHandler.sendCloseSignal();
-  },
-
-  _onConnectionMessage: function(buffer) {
-    var clientId = DeviceConnector.Connection.parseClientId(buffer);
-    var type = DeviceConnector.Connection.parsePacketType(buffer);
-
-    var tunnel = this._tunnels[clientId];
-
-    var openCallback = this._pendingOpen[clientId];
-    if (openCallback)
-      delete this._pendingOpen[clientId];
-
-    var logPrefix = "Tunnel " + clientId;
-    var logError = this._logError.bind(null, logPrefix);
-    var logDebug = this._logDebug.bind(null, logPrefix);
-
-    switch (type) {
-      case DeviceConnector.Connection.OPEN:
-        if (tunnel) {
-          logError('already exists (OPEN)');
-        } else  if (openCallback) {
-          this._status.connected++;
-          logDebug('created');
-          tunnel = new DeviceConnector.Connection.Tunnel();
-          tunnel.oncloseinternal = this._onTunnelClosedByClient.bind(this, clientId);
-          tunnel.send = this._sendData.bind(this, clientId);
-          this._tunnels[clientId] = tunnel;
-          openCallback(tunnel);
-        } else {
-          logError('does not exist (OPEN');
-        }
-        break;
-      
-      case DeviceConnector.Connection.OPEN_FAIL:
-        this._status.refused++;
-        if (openCallback) {
-          logDebug('failed to connect');
-          openCallback();
-        } else {
-          logError('callback does not exist (OPEN_FAIL)');
-        }
-        break;
-
-      case DeviceConnector.Connection.CLOSE:
-        if (tunnel) {
-          logDebug('closed by server');
-          tunnel.oncloseinternal = this._onTunnelClosed.bind(this, clientId);
-          tunnel.close();
-        } else {
-          logError('does not exist (CLOSE');
-        }
-        break;
-        
-      case DeviceConnector.Connection.DATA:
-        if (tunnel) {
-          logDebug('received ' + buffer.byteLength + ' bytes');
-          tunnel.receive(DeviceConnector.Connection.parsePacketPayload(buffer));
-        } else {
-          logError('does not exist (DATA)');
-        }
-        break;
-        
-      default:
-        logError('received unknown packet type ' + type);
+    if (this._tunnelClient) {
+      this._tunnelClient.close();
+      delete this._tunnelClient;
     }
-  },
-  
-  _send: function(clientId, type, opt_data) {
-    this._webrtcConnection.send(DeviceConnector.Connection.buildPacket(clientId, type, opt_data));
-  },
-
-  _onTunnelClosed: function(clientId) {
-    if (this._tunnels[clientId])
-      delete this._tunnels[clientId];
-    else
-      this._logError("Tunnel " + clientId + " does not exist (closing)");
-  },
-
-  _onTunnelClosedByClient: function(clientId) {
-    this._logDebug("Tunnel " + clientId + " closed by client");
-    this._sendClose(clientId);
-    this._onTunnelClosed(clientId);
+    this._disconnected = true;
+    this._signalingHandler.sendCloseSignal();
   }
 };
-
-DeviceConnector.Connection.Tunnel = function() {};
-
-DeviceConnector.Connection.Tunnel.prototype = {
-  close: function() {
-    if (this._closing)
-      return;
-    this._closing = true;
-    if (this.onclose)
-      this.onclose();
-    if (this.oncloseinternal)
-      this.oncloseinternal();
-  },
-
-  receive: function(data) {
-    if (this.onmessage)
-      this.onmessage(data);
-  }
-};
-

@@ -44,7 +44,7 @@ body {
 
 .table-row :not(:first-child) {
   flex: 0;
-  min-width: 70px;
+  min-width: 64px;
   text-align: center;
 }
 

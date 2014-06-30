@@ -1,12 +1,25 @@
-var Device = {};
+var GCD = {};
 
-Device.GCD_SCOPE = "https://www.googleapis.com/auth/clouddevices";
+GCD.PRODUCTION_URL = "https://www.googleapis.com/clouddevices/v1/";
 
-Device.DEFAULT_NAME = "DevTools Bridge";
+GCD.STAGING_URL = "https://www-googleapis-staging.sandbox.google.com/clouddevices/v1/";
 
-Device.STATE_KEY = "DEVICE_STATE";
+GCD.createRequestUrl = function(path) {
+  if (window.useGCDStaging)
+    return GCD.STAGING_URL + path;
+  else
+    return GCD.PRODUCTION_URL + path;
+};
 
-Device.createDraft = function(name) {
+GCD.Device = {};
+
+GCD.Device.SCOPE = "https://www.googleapis.com/auth/clouddevices";
+
+GCD.Device.DEFAULT_NAME = "DevTools Bridge";
+
+GCD.Device.STATE_KEY = "DEVICE_STATE";
+
+GCD.Device.createDraft = function(name) {
   return {
     'deviceKind': 'vendor',
     'systemName': name,
@@ -26,24 +39,24 @@ Device.createDraft = function(name) {
   };
 };
 
-Device.start = function(commandHandler, deviceStateGetter, successCallback, errorCallback) {
-  User.requestDevices(function(response) {
+GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, errorCallback) {
+  GCD.User.requestDevices(function(response) {
     chrome.storage.local.get(function (items) {
       function started() {
         successCallback();
-        Device.poll(commandHandler, deviceStateGetter);
+        GCD.Device.poll(commandHandler, deviceStateGetter);
       }
 
       var deviceList = response.devices || [];
 
       try {
-        Device.STATE = JSON.parse(items.DEVICE_STATE);
+        GCD.Device.STATE = JSON.parse(items.DEVICE_STATE);
         var registeredDevice = deviceList.filter(function (device) {
-          return device.id == Device.STATE.id;
+          return device.id == GCD.Device.STATE.id;
         })[0];
 
         if (registeredDevice) {
-          console.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + Device.STATE.id);
+          console.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + GCD.Device.STATE.id);
           started();
           return;
         }
@@ -51,31 +64,31 @@ Device.start = function(commandHandler, deviceStateGetter, successCallback, erro
       } catch (e) {
       }
 
-      delete Device.STATE;
-      chrome.storage.local.remove(Device.STATE_KEY);
+      delete GCD.Device.STATE;
+      chrome.storage.local.remove(GCD.Device.STATE_KEY);
 
       var deviceNumbers = deviceList.map(function (device) {
-        var match = device.displayName.match(Device.DEFAULT_NAME + ' (\\d+)$');
+        var match = device.displayName.match(GCD.Device.DEFAULT_NAME + ' (\\d+)$');
         return match ? Number(match[1]) : 1;
       });
 
-      var deviceName = Device.DEFAULT_NAME;
+      var deviceName = GCD.Device.DEFAULT_NAME;
       if (deviceNumbers.length) {
         var deviceNumber = Math.max.apply(null, deviceNumbers) + 1;
         deviceName += ' ' + deviceNumber;
       }
 
-      Device.register(
+      GCD.Device.register(
           deviceName,
           function (ticket, credentials) {
             console.log("Registered device '" + ticket.deviceDraft.displayName + "' #" + ticket.deviceDraft.id);
-            Device.STATE = {
+            GCD.Device.STATE = {
               id: ticket.deviceDraft.id,
               access_token: credentials.access_token,
               refresh_token: credentials.refresh_token
             };
             var items = {};
-            items[Device.STATE_KEY] = JSON.stringify(Device.STATE);
+            items[GCD.Device.STATE_KEY] = JSON.stringify(GCD.Device.STATE);
             chrome.storage.local.set(items);
             started();
           },
@@ -84,17 +97,17 @@ Device.start = function(commandHandler, deviceStateGetter, successCallback, erro
   });
 };
 
-Device.stop = function() {
-  Device._stopped = true;
-  if (Device.TIMEOUT) {
-    clearTimeout(Device.TIMEOUT);
-    delete Device.TIMEOUT;
+GCD.Device.stop = function() {
+  GCD.Device._stopped = true;
+  if (GCD.Device.TIMEOUT) {
+    clearTimeout(GCD.Device.TIMEOUT);
+    delete GCD.Device.TIMEOUT;
   }
-  delete Device.STATE;
+  delete GCD.Device.STATE;
 };
 
-Device.register = function(deviceName, successCallback, errorCallback) {
-  User.request(
+GCD.Device.register = function(deviceName, successCallback, errorCallback) {
+  GCD.User.request(
       'POST',
       'registrationTickets',
       {userEmail: 'me'},
@@ -102,11 +115,11 @@ Device.register = function(deviceName, successCallback, errorCallback) {
       errorCallback);
 
   function patchTicket(ticket) {
-    User.request(
+    GCD.User.request(
         'PATCH',
         'registrationTickets/' + ticket.id + '?key=' + Keys.API_KEY,
         {
-          deviceDraft: Device.createDraft(deviceName),
+          deviceDraft: GCD.Device.createDraft(deviceName),
           oauthClientId: Keys.OAUTH_CLIENT_ID
         },
         finalizeTicket,
@@ -114,7 +127,7 @@ Device.register = function(deviceName, successCallback, errorCallback) {
   }
 
   function finalizeTicket(ticket) {
-    User.request(
+    GCD.User.request(
         'POST',
         'registrationTickets/' + ticket.id + '/finalize?key=' + Keys.API_KEY,
         " ",
@@ -125,14 +138,14 @@ Device.register = function(deviceName, successCallback, errorCallback) {
   function requestDeviceCredentials(ticket) {
     XHR.requestOAuthTokens(
         Keys.OAUTH_CLIENT_ID,
-        Device.GCD_SCOPE,
+        GCD.Device.SCOPE,
         ticket.robotAccountAuthorizationCode,
         successCallback.bind(null, ticket),
         errorCallback);
   }
 };
 
-Device.unregister = function() {
+GCD.Device.unregister = function() {
   chrome.storage.local.get(function(items){
     var deviceId;
     try {
@@ -141,13 +154,13 @@ Device.unregister = function() {
       console.error('Failed to parse device state');
       return;
     }
-    User.request(
+    GCD.User.request(
         'DELETE',
         'devices/' + deviceId,
         null,
         function() {
           console.log('Deleted device ' + deviceId);
-          chrome.storage.local.remove(Device.STATE_KEY);
+          chrome.storage.local.remove(GCD.Device.STATE_KEY);
         },
         function(status) {
           console.error('Could not deleted device ' + deviceId + ', status=' + status);
@@ -155,25 +168,25 @@ Device.unregister = function() {
   });
 };
 
-Device.poll = function(commandHandler, deviceStateGetter) {
-  Device.request(
+GCD.Device.poll = function(commandHandler, deviceStateGetter) {
+  GCD.Device.request(
       'GET',
-      'commands?state=queued&&deviceId=' + Device.STATE.id,
+      'commands?state=queued&&deviceId=' + GCD.Device.STATE.id,
       null,
-      Device.receivedCommands.bind(null, commandHandler, deviceStateGetter));
+      GCD.Device.receivedCommands.bind(null, commandHandler, deviceStateGetter));
 
   var deviceState = deviceStateGetter();
   var deviceStateJson = JSON.stringify(deviceState);
-  if (!Device._cachedDeviceStateJson || Device._cachedDeviceStateJson != deviceStateJson) {
-    Device._cachedDeviceStateJson = deviceStateJson;
-    Device.patchVendorState(deviceState, function() {
+  if (!GCD.Device._cachedDeviceStateJson || GCD.Device._cachedDeviceStateJson != deviceStateJson) {
+    GCD.Device._cachedDeviceStateJson = deviceStateJson;
+    GCD.Device.patchVendorState(deviceState, function() {
       console.debug("Patched device state: " + deviceStateJson);
     });
   }
 };
 
-Device.receivedCommands = function(commandHandler, deviceStateGetter, commands) {
-  if (Device._stopped)
+GCD.Device.receivedCommands = function(commandHandler, deviceStateGetter, commands) {
+  if (GCD.Device._stopped)
     return;
 
   if ('commands' in commands) {
@@ -182,17 +195,17 @@ Device.receivedCommands = function(commandHandler, deviceStateGetter, commands) 
         commandHandler(
             command.name,
             command.parameters,
-            Device.respondToCommand.bind(null, command.id));
+            GCD.Device.respondToCommand.bind(null, command.id));
       } catch (e) {
         console.error("Error processing command: " + command.name, e)
       }
     });
   }
 
-  Device.TIMEOUT = setTimeout(Device.poll, 1000, commandHandler, deviceStateGetter);
+  GCD.Device.TIMEOUT = setTimeout(GCD.Device.poll, 1000, commandHandler, deviceStateGetter);
 };
 
-Device.respondToCommand = function(id, results) {
+GCD.Device.respondToCommand = function(id, results) {
   var patch = {
     state: 'done'
   };
@@ -204,23 +217,23 @@ Device.respondToCommand = function(id, results) {
       console.error('Failed to patch command', command);
   }
 
-  Device.request(
+  GCD.Device.request(
       'PATCH',
       'commands/' + id,
       patch,
       patchedCommand);
 };
 
-Device.refreshAccessToken = function(callback) {
+GCD.Device.refreshAccessToken = function(callback) {
   XHR.refreshAccessToken(
       Keys.OAUTH_CLIENT_ID,
-      Device.STATE.refresh_token,
+      GCD.Device.STATE.refresh_token,
       function(response) {
-        Device.STATE.access_token = response.access_token;
+        GCD.Device.STATE.access_token = response.access_token;
         var items = {};
-        items[Device.STATE_KEY] = JSON.stringify(Device.STATE);
+        items[GCD.Device.STATE_KEY] = JSON.stringify(GCD.Device.STATE);
         chrome.storage.local.set(items);
-        callback(Device.STATE.access_token);
+        callback(GCD.Device.STATE.access_token);
       },
       function(status) {
         console.error('Failed to refresh access token, status = ' + status);
@@ -228,11 +241,11 @@ Device.refreshAccessToken = function(callback) {
       });
 };
 
-Device.request = function(method, path, postData, successCallback, errorCallback) {
+GCD.Device.request = function(method, path, postData, successCallback, errorCallback) {
   var doRequest = XHR.requestWithToken.bind(
       null,
       method,
-      XHR.getCloudDevicesUrl(path),
+      GCD.createRequestUrl(path),
       postData,
       successCallback);
 
@@ -244,15 +257,15 @@ Device.request = function(method, path, postData, successCallback, errorCallback
 
   function retryOnError(status) {
     if (status == XHR.HTTP_ERROR_UNAUTHORIZED || status == XHR.HTTP_ERROR_FORBIDDEN)
-      Device.refreshAccessToken(doRequest.bind(null, errorCallback));
+      GCD.Device.refreshAccessToken(doRequest.bind(null, errorCallback));
     else
       errorCallback(status);
   }
 
-  doRequest(retryOnError, Device.STATE.access_token);
+  doRequest(retryOnError, GCD.Device.STATE.access_token);
 };
 
-Device.patchVendorState = function(state, callback) {
+GCD.Device.patchVendorState = function(state, callback) {
   var value = [];
   for (var key in state) {
     if (!state.hasOwnProperty(key))
@@ -273,5 +286,49 @@ Device.patchVendorState = function(state, callback) {
     }
   };
 
-  Device.request('PATCH', 'devices/' + Device.STATE.id, patch, callback);
+  GCD.Device.request('PATCH', 'devices/' + GCD.Device.STATE.id, patch, callback);
+};
+
+GCD.User = {};
+
+GCD.User.request = function(
+    method, path, postData, successCallback, errorCallback) {
+  if (!errorCallback) {
+    errorCallback = function (status) {
+      console.error(method + ' error ' + status + ' path = ' + path + ', data = ' + JSON.stringify(postData));
+    };
+  }
+
+  chrome.identity.getAuthToken(
+      { 'interactive': true },
+      function(token) {
+        if (chrome.runtime.lastError) {
+          console.error(chrome.runtime.lastError.message);
+          errorCallback(XHR.HTTP_ERROR_UNAUTHORIZED);
+          return;
+        }
+        XHR.requestWithToken(
+            method,
+            GCD.createRequestUrl(path),
+            postData,
+            successCallback,
+            errorCallback,
+            token);
+      });
+};
+
+GCD.User.requestDevices = function(callback) {
+  GCD.User.request('GET', 'devices', null, callback);
+};
+
+GCD.User.sendCommand = function(deviceId, name, parameters, callback) {
+  GCD.User.request(
+      'POST',
+      'commands',
+      {
+        deviceId: deviceId,
+        name: name,
+        parameters: parameters
+      },
+      callback);
 };

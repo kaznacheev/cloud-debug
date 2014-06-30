@@ -6,15 +6,6 @@ XHR.HTTP_ERROR_UNAUTHORIZED = 401;
 XHR.HTTP_ERROR_FORBIDDEN = 403;
 
 XHR.OAUTH_URL = "https://accounts.google.com/o/oauth2/token";
-XHR.GCD_URL = "https://www.googleapis.com/clouddevices/v1/";
-XHR.GCD_STAGING_URL = "https://www-googleapis-staging.sandbox.google.com/clouddevices/v1/";
-
-XHR.getCloudDevicesUrl = function(path) {
-  if (window.useGCDStaging)
-    return XHR.GCD_STAGING_URL + path;
-  else
-    return XHR.GCD_URL + path;
-};
 
 XHR.requestWithToken = function(method, url, postData, successCallback, errorCallback, token) {
   var xhr = new XMLHttpRequest();

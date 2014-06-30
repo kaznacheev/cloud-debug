@@ -15,18 +15,17 @@
     "background": {
       "scripts": [
         "js/background.js",
-        "js/util.js",
+        "js/lib/byte_array.js",
+        "js/lib/gcd.js",
+        "js/lib/socket_tunnel.js",
+        "js/lib/tcp.js",
+        "js/lib/webrtc.js",
+        "js/lib/xhr.js",
         "js/client/adb_command_handler.js",
         "js/client/device_connector.js",
-        "js/client/tcp.js",
         "js/client/test_device_connector.js",
-        "js/client/webrtc_client.js",
-        "js/gcd/device.js",
-        "js/gcd/keys.js",
-        "js/gcd/user.js",
-        "js/gcd/xhr.js",
         "js/server/proxy_device.js",
-        "js/server/webrtc_server.js"
+        "keys.js"
       ]
     }
   },

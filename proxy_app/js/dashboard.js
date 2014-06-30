@@ -49,7 +49,7 @@ function createChild(parent, className, opt_content) {
 
 function createRowCells(row, isHeader) {
   function createCell(name) {
-    createChild(row, name.toLowerCase(), isHeader && name);
+    createChild(row, name.toLowerCase().replace(/ /g, '_'), isHeader && name);
   }
   createCell('Name');
   createCell('GCD');
@@ -57,23 +57,26 @@ function createRowCells(row, isHeader) {
   createCell('Data');
   createCell('Connected');
   createCell('Refused');
-  createCell('Sent');
-  createCell('Received');
+  createCell('Active');
+  createCell('Sent pckts');
+  createCell('Recv pckts');
+  createCell('Sent bytes');
+  createCell('Recv bytes');
 }
 
-function formatBytes(bytes) {
-  if (typeof bytes != 'number')
+function formatQuantity(number) {
+  if (typeof number != 'number')
     return "n/a";
 
-  if (bytes < 1024)
-    return bytes + ' b';
+  if (number < 1024)
+    return number;
 
-  var kBytes = bytes / 1024;
-  if (kBytes < 1024)
-    return kBytes.toFixed(kBytes < 100 ? 1 : 0) + ' Kb';
+  var kNumber = number / 1024;
+  if (kNumber < 1024)
+    return kNumber.toFixed(kNumber < 100 ? 1 : 0) + 'K';
 
-  var mBytes = kBytes / 1024;
-  return mBytes.toFixed(mBytes < 10 ? 2 : 1) + ' Mb';
+  var mNumber = kNumber / 1024;
+  return mNumber.toFixed(mNumber < 10 ? 2 : 1) + 'M';
 }
 
 function updateDashboard(connector) {
@@ -108,8 +111,8 @@ function updateDashboard(connector) {
         var cell = row.querySelector('.' + key);
         if (cell) {
           var value = status[key];
-          if (key == 'sent' || key == 'received')
-            value = formatBytes(value);
+          if (key.match(/^(sent|recv)/))
+            value = formatQuantity(value);
           cell.textContent = value;
         } else {
           console.error('Cannot find cell: ' + key);
