@@ -1,6 +1,5 @@
 {
-  // id: dildepgggkpaojoihbhickofagelmjje
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlofaEHJk3SgguMWXy5BjE4gyzy3P3P5+pXMFriHp/tGYcHng24os5x1/+4903fc2kcThANAHydyzn4p+sJQMkaLZjIkq//TmVrbKVvI0/CAMjrzgg19P6YaRAT14xhEP7JyT+Hy8L96fHgUGzASPmPkpJR2TwsyWrf5a2ub8bseeCNrQ56m7Sk1tRAElJMAsn3Ff6EpMCmjA14w5QAJkPzfDr+OPBz8NrKQuZSQpi1xFUrrvbcq32S9pbElxFtTgm0vLbeiLrHjYlRGEIOppM3Wc40gm8yDf16tpAWmp0r5B8HoZEwQ263ca9AdqgOHvJ3ZP+/yMnfaQFvwv36U0uQIDAQAB",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkGYxMAGsYFe84mjKHdPFbM4sL9hsVnKBM6+bbNp0o4wvghiqh4nxGdPsjGUSmZbLrZSKa5ngPQVaDWQDYYxAaezkuwqLySt2mbV2rI1Hct65eC9iPZnJNYE85s+AZ8NM+ksAspTHZlIxJTzXz1C/ux7w0drqOLvsOtd0BsKzf/IdSZBpNsnig9skOH06vdW/yfDp8kdBLsywll4o1pYLfhVzbyXdE/yHzwBEuxYcJAvTaVS1M9L5/ay18T6mEvL8eAvvpb1n5872EAm9UlnNl6PAzFwwJW16oro1Tk/TTq3uWVG7n+XD8RLkuK5Kp06rifZ8H9oEjM1HG26BoCTF0wIDAQAB",
   "name": "DevTools WebRTC Client",
   "version": "0.0.3",
   "manifest_version": 2,
@@ -31,7 +30,7 @@
     }
   },
   "oauth2": {
-    "client_id": "852539952535-bijes4q2bihgbv1u66clto2qgedsp4ef.apps.googleusercontent.com",
+    "client_id": "852539952535-dbmvt973p9ql846hcpeebaduvnvqbv93.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/clouddevices"
     ]
