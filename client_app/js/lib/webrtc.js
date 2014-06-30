@@ -207,7 +207,8 @@ WebRTCClientSocket.SignalingHandler.prototype = {
     if (!this._delayedPollTimeout)
       this._delayedPollTimeout = setTimeout(function() {
         this._delayedPollTimeout = null;
-        this.poll();
+        if (this._buffer.length)
+          this.poll();
       }.bind(this),
       300);
   },

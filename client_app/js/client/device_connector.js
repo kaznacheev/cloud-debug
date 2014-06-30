@@ -106,8 +106,7 @@ DeviceConnector.Connection = function(resource, iceServersConfig) {
 
   this._status = {};
 
-  this.update(resource);
-
+  this._parseVendorState(resource);
   this.connect();
 };
 
@@ -157,15 +156,7 @@ DeviceConnector.Connection.prototype = {
       this._disconnected = false;
       this.connect();
     }
-
-    var vendorState = {};
-    try {
-      resource.state.base.vendorState.value.forEach(function(item) {
-        vendorState[item.name] = item.stringValue;
-      });
-    } catch(e) {
-    }
-    this._sockets = (vendorState.sockets || '').split(',');
+    var vendorState = this._parseVendorState(resource);
     if (vendorState.hasPendingSignaling)
       this._signalingHandler.poll();
   },
@@ -182,6 +173,18 @@ DeviceConnector.Connection.prototype = {
       mergeMap(result, this._tunnelClient.getStatus());
     mergeMap(result, this._status);
     return result;
+  },
+
+  _parseVendorState: function(resource) {
+    var vendorState = {};
+    try {
+      resource.state.base.vendorState.value.forEach(function(item) {
+        vendorState[item.name] = item.stringValue;
+      });
+    } catch(e) {
+    }
+    this._sockets = (vendorState.sockets || '').split(',');
+    return vendorState;
   },
 
   _exchangeSignaling: function(message, successCallback, errorCallback) {
