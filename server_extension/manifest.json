@@ -1,0 +1,39 @@
+{
+  // id: lmbbfoodmokjhbnhbcihdkegdhgigjfb
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmugvAjxxY61n5PPQOPWK25j4V9lUn6Y6LMBp1QWaVwqRUO2G4lOWKC1f81koJWZD2qY0adn8Szkv0MhBIUlQ5iYC/bcMK6vQoj1+dDqpwpfqBA6MjmkH+Nt+y0Yw1nkG7fahgDF0ZcRE+H8JoILspmUeZalHeZ4Spx+xL95Y2eEpLqq68QYF0pPJv3TNENAP7MvgRTk735yipUoe0jsQGVS0JH31Y0j9JkfJbUbA5HPnBRrBaxhnHi9/5EyNxHkycYpxNLZo03dE5c3xNuoLzQwU+jbQqLe8/01zpS0xI43EMoxDwD4JHYhnakckNioYxEN21hGJeMllzyndCDGmRQIDAQAB",
+  "name": "DevTools WebRTC Server",
+  "description": "An extension that allows debugging Chrome pages remotely over WebRTC",
+  "version": "0.0.1",
+  "manifest_version": 2,
+  "permissions": [
+    "debugger",
+    "identity",
+    "tabs",
+    "https://*.google.com/",
+    "https://www.googleapis.com/"
+  ],
+  "background": {
+    "scripts": [
+      "js/debugger_socket.js",
+      "js/import/lib/byte_array.js",
+      "js/import/lib/gcd.js",
+      "js/import/lib/socket_tunnel.js",
+      "js/import/lib/webrtc.js",
+      "js/import/lib/xhr.js",
+      "js/import/server/proxy_device.js",
+      "js/background.js",
+      "js/version_info.js",
+      "keys.js"
+    ]
+  },
+  "browser_action": {
+    "default_icon": "images/debuggerPlay.png",
+    "default_title": "Connect Cloud Debug"
+  },
+  "oauth2": {
+    "client_id": "852539952535-psnr46jkj7ejfgn77rj6ntscfrkvblrs.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/clouddevices"
+    ]
+  }
+}
