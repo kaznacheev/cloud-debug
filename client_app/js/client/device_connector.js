@@ -15,7 +15,7 @@ DeviceConnector.prototype = {
   _start: function(turnServerConfig) {
     this._iceServersConfig = {
       iceServers: [
-        {urls: "stun:stun.l.google.com:19302"}
+        {urls: ["stun:stun.l.google.com:19302"]}
       ]
     };
     if (turnServerConfig) {
