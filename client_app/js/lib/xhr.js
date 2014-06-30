@@ -7,6 +7,13 @@ XHR.HTTP_ERROR_FORBIDDEN = 403;
 
 XHR.OAUTH_URL = "https://accounts.google.com/o/oauth2/token";
 
+XHR.simpleGet = function(url, successCallback, errorCallback) {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", url);
+  xhr.onload = XHR._parseJSONResponse.bind(null, xhr, successCallback, errorCallback);
+  xhr.send();
+};
+
 XHR.requestWithToken = function(method, url, postData, successCallback, errorCallback, token) {
   var xhr = new XMLHttpRequest();
   xhr.open(method, url);

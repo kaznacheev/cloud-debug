@@ -1,14 +1,10 @@
 function DeviceConnector() {
   this._connections = {};
 
-  var xhr = new XMLHttpRequest();
-  xhr.open("GET", DeviceConnector.ICE_CONFIG_URL);
-  xhr.onload = XHR._parseJSONResponse.bind(
-      null,
-      xhr,
+  XHR.simpleGet(
+      DeviceConnector.ICE_CONFIG_URL,
       this._start.bind(this),
       this._start.bind(this, null));
-  xhr.send();
 }
 
 DeviceConnector.debug = false;
