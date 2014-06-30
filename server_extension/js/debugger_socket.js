@@ -4,7 +4,7 @@ function DebuggerSocket() {
 
 DebuggerSocket.DEFAULT_SOCKET = "chrome_devtools_remote";
 
-DebuggerSocket.FRONTEND_URL = "chrome-devtools://devtools/remote/serve_rev/@{REV}/devtools.html";
+DebuggerSocket.FRONTEND_URL = "http://chrome-devtools-frontend.appspot.com/serve_rev/@{REV}/devtools.html";
 
 DebuggerSocket.connect = function(socketName, callback) {
   if (socketName == DebuggerSocket.DEFAULT_SOCKET)
@@ -34,32 +34,38 @@ DebuggerSocket.prototype = {
     }
 
     this._buffer += ByteArray.toString(new Uint8Array(data));
-    var endPos = this._buffer.indexOf("\r\n\r\n");
-    if (endPos < 0)
-      return;
-    var lines = this._buffer.substr(0, endPos).split("\r\n");
-    if (!lines.length) {
-      this._respond400();
-      return;
-    }
-    var requestParams = lines[0].split(' ');
-    if (requestParams.length != 3 || requestParams[0].toUpperCase() != 'GET') {
-      this._respond400();
-      return;
-    }
-    var path = requestParams[1];
-    var headers = {};
-    lines.slice(1).forEach(function (line) {
-      var parts = line.split(":");
-      if (parts.length == 2) {
-        headers[parts[0].trim()] = parts[1].trim();
-      }
-    });
 
-    if (headers["Upgrade"] == "WebSocket")
-      this._handleWebSocket(path, headers);
-    else
+    for (;;) {
+      var endPos = this._buffer.indexOf("\r\n\r\n");
+      if (endPos < 0)
+        return;
+      var lines = this._buffer.substr(0, endPos).split("\r\n");
+      this._buffer = this._buffer.substr(endPos + 4);
+
+      if (!lines.length) {
+        this._respond400();
+        return;
+      }
+      var requestParams = lines[0].split(' ');
+      if (requestParams.length != 3 || requestParams[0].toUpperCase() != 'GET') {
+        this._respond400();
+        return;
+      }
+      var path = requestParams[1];
+      var headers = {};
+      lines.slice(1).forEach(function (line) {
+        var colonPos = line.indexOf(":");
+        if (colonPos > 0) {
+          headers[line.substr(0, colonPos).trim().toLowerCase()] =
+              line.substr(colonPos + 1).trim().toLowerCase();
+        }
+      });
+
+      if (this._handleWebSocket(path, headers))
+        return;
+
       this._handleGet(path, headers);
+    }
   },
 
   _respond: function (buffer) {
@@ -104,29 +110,48 @@ DebuggerSocket.prototype = {
     this._respondHTTP(404, "Not found", null, message);
   },
 
+  _augmentTarget:  function(frontendUrl, host, target) {
+    if (!target.attached) {
+      var debugPath = host + "/devtools/page/" + target.id;
+      target.devtoolsFrontendUrl = frontendUrl + "?ws=" + debugPath;
+      target.webSocketDebuggerUrl = "ws://" + debugPath;
+    }
+    return target;
+  },
+
+  _createTargetHTML: function(target) {
+    return '<a href="' + target.devtoolsFrontendUrl + '" ' +
+           ' title="' + target.url + '">' + (target.title || 'untitled') + '</a>' +
+           '&nbsp;&nbsp;(' + target.type + ')<br>';
+  },
+
+  _getTargetList: function(host, callback) {
+    VersionInfo.request(function(version) {
+      var frontendUrl = DebuggerSocket.FRONTEND_URL.replace("{REV}", version["WebKit-Revision"]);
+      chrome.debugger.getTargets(function (targets) {
+        callback(targets.map(this._augmentTarget.bind(this, frontendUrl, host)));
+      }.bind(this));
+    }.bind(this));
+  },
+
   _handleGet: function (path, headers) {
-    if (path == '/json/version') {
-      VersionInfo.request(function(version) {
-        this._respond200(version);
+    console.debug("GET " + path);
+    var host = headers['host'] || '';
+
+    if (path == "/") {
+      this._getTargetList(host, function(targets) {
+        this._respond200(targets.map(this._createTargetHTML.bind(this)).join('\n'));
       }.bind(this));
       return;
     }
 
+    if (path == '/json/version') {
+      VersionInfo.request(this._respond200.bind(this));
+      return;
+    }
+
     if (path == '/json' || path == '/json/list') {
-      VersionInfo.request(function(version) {
-        var frontendUrl = DebuggerSocket.FRONTEND_URL.replace("{REV}", version["WebKit-Revision"]);
-        chrome.debugger.getTargets(function (targets) {
-          var list = targets.map(function (target) {
-            if (!target.attached) {
-              var debugPath = "/devtools/page/" + target.id;
-              target.devtoolsFrontendUrl = frontendUrl + "?ws=" + debugPath;
-              target.webSocketDebuggerUrl = "ws://" + debugPath;
-            }
-            return target;
-          });
-          this._respond200(list);
-        }.bind(this));
-      }.bind(this));
+      this._getTargetList(host, this._respond200.bind(this));
       return;
     }
 
@@ -178,6 +203,9 @@ DebuggerSocket.prototype = {
   },
 
   _handleWebSocket: function (path, headers) {
+    if (headers["upgrade"] != "websocket")
+      return false;
+
     var match = path.match("^/devtools/page/(.+)$");
     if (match) {
       var debuggee = {targetId: match[1]};
@@ -185,9 +213,10 @@ DebuggerSocket.prototype = {
           debuggee,
           VersionInfo.DEBUGGER_PROTOCOL,
           this._onDebuggerAttach.bind(this, debuggee));
-      return;
+      return true;
     }
     this._respond404("WebSocket not found at " + path);
+    return true;
   },
 
   _onDebuggerAttach: function(debuggee) {
