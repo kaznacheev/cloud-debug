@@ -110,6 +110,8 @@ DeviceConnector.Connection = function(resource, iceServersConfig) {
   this.connect();
 };
 
+DeviceConnector.Connection.RECONNECT_TIMEOUT = 3000;
+
 DeviceConnector.Connection.prototype = {
   connect: function() {
     this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
@@ -124,7 +126,7 @@ DeviceConnector.Connection.prototype = {
 
   stop: function() {
     this._logInfo('Destroyed');
-    if (!this._disconnected)
+    if (!this._reconnectTime)
       this._webrtcConnection.close();
   },
 
@@ -152,8 +154,8 @@ DeviceConnector.Connection.prototype = {
   },
 
   update: function(resource) {
-    if (this._disconnected) {
-      this._disconnected = false;
+    if (this._reconnectTime && (this._reconnectTime < Date.now())) {
+      delete this._reconnectTime;
       this.connect();
     }
     var vendorState = this._parseVendorState(resource);
@@ -225,7 +227,7 @@ DeviceConnector.Connection.prototype = {
       this._tunnelClient.close();
       delete this._tunnelClient;
     }
-    this._disconnected = true;
+    this._reconnectTime = Date.now() + DeviceConnector.Connection.RECONNECT_TIMEOUT;
     this._signalingHandler.stop();
   }
 };
