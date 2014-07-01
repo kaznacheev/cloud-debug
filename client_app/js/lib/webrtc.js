@@ -27,6 +27,7 @@ WebRTCSocket.prototype = {
     this._dataChannel.onerror = this._onDataChannelError.bind(this);
     this._dataChannel.onmessage = this._onDataChannelMessage.bind(this);
 
+    this._connectTimestamp = Date.now();
     this._connectTimeout = setTimeout(
         this._onConnectTimeout.bind(this),
         opt_timeout || WebRTCSocket.DEFAULT_CONNECT_TIMEOUT);
@@ -139,7 +140,7 @@ WebRTCSocket.prototype = {
   },
 
   _onDataChannelOpen: function() {
-    this._logInfo('Data channel open');
+    this._logInfo('Data channel open (' + ((Date.now() - this._connectTimestamp) / 1000).toFixed(1) + 's)');
     this._clearConnectTimeout();
     if (this._closing) {
       this._dataChannel.close();
