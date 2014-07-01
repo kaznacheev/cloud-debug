@@ -29,10 +29,13 @@ function changeSetting(key, on) {
 
   switch (key) {
     case RUN_PROXY_KEY:
-      if (on)
+      if (on) {
+        createConnector();
         createProxyServer();
-      else
+      } else {
         deleteProxyServer();
+        deleteConnector();
+      }
       break;
 
     case RUN_DEVICE_KEY:
@@ -43,6 +46,14 @@ function changeSetting(key, on) {
       break;
 
     case CONNECT_LOCALHOST_KEY:
+      if (window[RUN_PROXY_KEY]) {
+        deleteProxyServer();
+        deleteConnector();
+        createConnector();
+        createProxyServer();
+      }
+      break;
+
     case SERVE_HTTP_KEY:
       if (window[RUN_PROXY_KEY]) {
         deleteProxyServer();
@@ -54,15 +65,23 @@ function changeSetting(key, on) {
   return true;
 }
 
-var server;
 var connector;
 
-function createProxyServer() {
+function createConnector() {
   if (window[CONNECT_LOCALHOST_KEY])
     connector = new TestDeviceConnector();
   else
     connector = new DeviceConnector();
+}
 
+function deleteConnector() {
+  connector.stop();
+  connector = null;
+}
+
+var server;
+
+function createProxyServer() {
   var LOCAL_HOST = "127.0.0.1";
   if (window[SERVE_HTTP_KEY]) {
     server = new TCP.Server(LOCAL_HOST, 9222, HttpProxyHandler.create.bind(null, connector));
@@ -75,8 +94,6 @@ function createProxyServer() {
 function deleteProxyServer() {
   server.close();
   server = null;
-  connector.stop();
-  connector = null;
 }
 
 
@@ -137,8 +154,10 @@ function onWindowOpen(win) {
   if (window[RUN_IN_BACKGROUND_KEY])
     return;
 
-  if (window[RUN_PROXY_KEY])
+  if (window[RUN_PROXY_KEY]) {
+    createConnector();
     createProxyServer();
+  }
 
   if (window[RUN_DEVICE_KEY])
     startProxyDevice();
@@ -150,8 +169,10 @@ function onWindowClosed() {
   if (window[RUN_IN_BACKGROUND_KEY])
     return;
 
-  if (window[RUN_PROXY_KEY])
+  if (window[RUN_PROXY_KEY]) {
     deleteProxyServer();
+    deleteConnector();
+  }
 
   if (window[RUN_DEVICE_KEY])
     stopProxyDevice();
@@ -168,8 +189,10 @@ chrome.storage.local.get(function(items) {
   if (!window[RUN_IN_BACKGROUND_KEY])
     return;
 
-  if (window[RUN_PROXY_KEY])
+  if (window[RUN_PROXY_KEY]) {
+    createConnector();
     createProxyServer();
+  }
 
   if (window[RUN_DEVICE_KEY])
     startProxyDevice();
