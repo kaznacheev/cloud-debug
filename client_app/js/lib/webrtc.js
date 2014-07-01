@@ -9,16 +9,14 @@ function WebRTCSocket(name) {
     this._logDebug = function() {};
 
   this._logInfo('Created');
-
-  this._status = {};
 }
 
 WebRTCSocket.debug = false;
 
-WebRTCSocket.CLOSE_SIGNAL = { type: 'close' };
+WebRTCSocket.DEFAULT_CONNECT_TIMEOUT = 10000;
 
 WebRTCSocket.prototype = {
-  connect: function(serverConfig) {
+  connect: function(serverConfig, opt_timeout) {
     this._peerConnection = new webkitRTCPeerConnection(serverConfig, {});
     this._peerConnection.onicecandidate = this._onIceCandidate.bind(this);
     this._peerConnection.oniceconnectionstatechange = this._onIceConnectionState.bind(this);
@@ -28,6 +26,10 @@ WebRTCSocket.prototype = {
     this._dataChannel.onclose = this._onDataChannelClose.bind(this);
     this._dataChannel.onerror = this._onDataChannelError.bind(this);
     this._dataChannel.onmessage = this._onDataChannelMessage.bind(this);
+
+    this._connectTimeout = setTimeout(
+        this._onConnectTimeout.bind(this),
+        opt_timeout || WebRTCSocket.DEFAULT_CONNECT_TIMEOUT);
   },
 
   close: function () {
@@ -39,16 +41,12 @@ WebRTCSocket.prototype = {
     if (this.onclose)
       this.onclose();
 
-    if (this._dataChannel)
-      this._dataChannel.close();
-
-    if (this._peerConnection)
-      this._peerConnection.close();
+    this._clearConnectTimeout();
+    this._dataChannel.close();
+    this._peerConnection.close();
   },
 
   send: function(data) {
-    if (!this._dataChannel)
-      return;
     if (this._dataChannel.readyState != 'open') {
       this._logError('Data channel cannot send in state ' + this._dataChannel.readyState);
       return;
@@ -86,11 +84,10 @@ WebRTCSocket.prototype = {
   },
 
   getStatus: function() {
-    if (this._peerConnection)
-      this._status.ice = this._peerConnection.iceConnectionState;
-    if (this._dataChannel)
-      this._status.data =  this._dataChannel.readyState;
-    return this._status;
+    return {
+        ice: this._peerConnection.iceConnectionState,
+        data: this._dataChannel.readyState
+    };
   },
 
   _onIceCandidate: function(event)
@@ -111,10 +108,14 @@ WebRTCSocket.prototype = {
   },
 
   _onIceConnectionState: function(event) {
-    this._logInfo('ICE connection state: ' + event.currentTarget.iceConnectionState);
-    this._status.ice = this._peerConnection.iceConnectionState;
-    if (this._peerConnection.iceConnectionState == 'disconnected')
-      this._peerConnection = null;
+    this._logInfo('ICE connection state: ' + this._peerConnection.iceConnectionState);
+    switch(this._peerConnection.iceConnectionState) {
+      case 'closed':
+      case 'failed':
+      case 'disconnected':
+        this.close();
+        break;
+    }
   },
 
   _onError: function(context, error) {
@@ -124,8 +125,22 @@ WebRTCSocket.prototype = {
     this.close();
   },
 
+  _onConnectTimeout: function() {
+    this._logInfo('Connect timed out');
+    this._connectTimeout = null;
+    this.close();
+  },
+
+  _clearConnectTimeout: function() {
+    if (this._connectTimeout) {
+      clearTimeout(this._connectTimeout);
+      this._connectTimeout = null;
+    }
+  },
+
   _onDataChannelOpen: function() {
     this._logInfo('Data channel open');
+    this._clearConnectTimeout();
     if (this._closing) {
       this._dataChannel.close();
       return;
@@ -136,8 +151,6 @@ WebRTCSocket.prototype = {
 
   _onDataChannelClose: function() {
     this._logInfo('Data channel closed');
-    this._status.data = this._dataChannel.readyState;
-    this._dataChannel = null;
     this.close();
   },
 
@@ -198,7 +211,6 @@ WebRTCClientSocket.SignalingHandler.prototype = {
       clearTimeout(this._delayedPollTimeout);
       this._delayedPollTimeout = null;
     }
-    this._exchangeSignalingFunc(JSON.stringify([WebRTCSocket.CLOSE_SIGNAL]));
   },
 
   enqueue: function(messageObject) {
@@ -241,10 +253,7 @@ WebRTCClientSocket.SignalingHandler.prototype = {
       for (var i = 0; i != messageObjects.length; ++i) {
         var messageObject = messageObjects[i];
         this._socket._logDebug('Incoming signaling:', JSON.stringify(messageObject));
-        if (messageObject.type == "close") {
-          this._socket.close();
-          return;
-        } else if (messageObject.type == "answer") {
+        if (messageObject.type == "answer") {
           this._socket.setRemoteDescription(messageObject);
         } else if ("candidate" in messageObject) {
           this._socket.addIceCandidate(messageObject);
@@ -319,28 +328,24 @@ WebRTCServerSocket.SignalingHandler.prototype = {
             console.debug("Server signaling: received", JSON.stringify(messageObj));
 
           if (messageObj.iceServers) {
+            if (this._webrtcConnection) {
+              serverError("Connection already exists");
+              respondFunc([]);
+              return;
+            }
             this._iceServersConfig = messageObj;
           } else if (messageObj.type == "offer") {
             if (this._webrtcConnection) {
               serverError("Connection already exists");
-              respondFunc([WebRTCSocket.CLOSE_SIGNAL]);
+              respondFunc([]);
               return;
-            } else {
-              this._webrtcConnection = new WebRTCServerSocket();
-              this._webrtcConnection.onclose = this._onConnectionClosed.bind(this, true);
-              this._webrtcConnection.onoutboundsignaling = this._enqueue.bind(this);
-              this._webrtcConnection.connect(this._iceServersConfig, messageObj);
-              delete this._iceServersConfig;
-              this.onaccept(this._webrtcConnection);
             }
-          } else if (messageObj.type == WebRTCSocket.CLOSE_SIGNAL.type) {
-            if (this._webrtcConnection) {
-              this._webrtcConnection.onclose = this._onConnectionClosed.bind(this, false);
-              this._webrtcConnection.close();
-              this._buffer = [];  // Erase obsolete messages.
-            } else {
-              serverError("Cannot find the connection to close");
-            }
+            this._webrtcConnection = new WebRTCServerSocket();
+            this._webrtcConnection.onclose = this._onConnectionClosed.bind(this);
+            this._webrtcConnection.onoutboundsignaling = this._enqueue.bind(this);
+            this._webrtcConnection.connect(this._iceServersConfig, messageObj);
+            delete this._iceServersConfig;
+            this.onaccept(this._webrtcConnection);
           } else if ('candidate' in messageObj) {
             if (this._webrtcConnection)
               this._webrtcConnection.addIceCandidate(messageObj);
@@ -361,14 +366,11 @@ WebRTCServerSocket.SignalingHandler.prototype = {
   },
 
   _enqueue: function(messageObject) {
-    if (messageObject)
-      this._buffer.push(messageObject);
+    this._buffer.push(messageObject);
   },
 
-  _onConnectionClosed: function(sendCloseSignal) {
-    if (sendCloseSignal)
-      this._enqueue(WebRTCServerSocket.CLOSE_SIGNAL);
+  _onConnectionClosed: function() {
     delete this._webrtcConnection;
-    this.onclose();
+    this._buffer = [];
   }
 };
