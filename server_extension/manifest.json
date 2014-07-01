@@ -21,6 +21,7 @@
       "js/import/lib/xhr.js",
       "js/import/server/proxy_device.js",
       "js/background.js",
+      "js/sha1.js",
       "js/version_info.js",
       "keys.js"
     ]

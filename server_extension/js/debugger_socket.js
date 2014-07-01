@@ -57,7 +57,7 @@ DebuggerSocket.prototype = {
         var colonPos = line.indexOf(":");
         if (colonPos > 0) {
           headers[line.substr(0, colonPos).trim().toLowerCase()] =
-              line.substr(colonPos + 1).trim().toLowerCase();
+              line.substr(colonPos + 1).trim();
         }
       });
 
@@ -75,29 +75,32 @@ DebuggerSocket.prototype = {
 
   _respondHTTP: function (status, message, headers, body) {
     var response = "HTTP/1.1 " + status + " " + message + "\r\n";
-    if (!headers && body)
-      headers = [];
 
     if (headers) {
-      if (body)
-        headers.push("Content-Length:" + body.length);
-      response += headers.join("\r\n") + "\r\n";
+      for (var key in headers)
+        if (headers.hasOwnProperty(key))
+          response += key + ": " + headers[key] + "\r\n";
     }
-    response += "\r\n";
+
     if (body)
-      response += body;
+      response += "Content-Length: " + body.length + "\r\n\r\n" + body;
+    else
+      response += "\r\n";
+
     this._respond(ByteArray.fromString(response).buffer);
   },
 
-  _respond101: function() {
-    this._respondHTTP(101, "WebSocket Protocol Handshake");
+  _respond101: function(headers) {
+    this._respondHTTP(101, "WebSocket Protocol Handshake", headers);
   },
 
   _respond200: function (body) {
     var headers;
     if (body && (typeof body != 'string')) {
       body = JSON.stringify(body);
-      headers = ["Content-Type:application/json"];
+      headers = {
+        "Content-Type": "application/json"
+      };
     }
     this._respondHTTP(200, "OK", headers, body);
   },
@@ -202,8 +205,38 @@ DebuggerSocket.prototype = {
     this._respond404('Unsupported path ' + path);
   },
 
+  _createWebSocketResponseHeaders: function(headers) {
+    function getHeaderValue(key) {
+      return headers[key.toLowerCase()] || '';
+    }
+    if (getHeaderValue("Upgrade").toLowerCase() != "websocket" ||
+        getHeaderValue("Connection").toLowerCase() != "upgrade")
+      return false;
+
+    var clientKey = getHeaderValue("Sec-WebSocket-Key");
+    if (!clientKey)
+      return false;
+
+    var magicStr = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+    clientKey += magicStr;
+    var sha1 = new Sha1();
+    sha1.reset();
+    sha1.update(ByteArray.fromString(clientKey));
+    var responseKey = btoa(ByteArray.toString(sha1.digest()));
+
+    var responseHeaders = {
+      'Upgrade': 'websocket',
+      'Connection': 'Upgrade',
+      'Sec-WebSocket-Accept': '' + responseKey
+    };
+    if (headers['Sec-WebSocket-Protocol'])
+      responseHeaders['Sec-WebSocket-Protocol'] = headers['Sec-WebSocket-Protocol'];
+    return responseHeaders;
+  },
+
   _handleWebSocket: function (path, headers) {
-    if (headers["upgrade"] != "websocket")
+    var responseHeaders = this._createWebSocketResponseHeaders(headers);
+    if (!responseHeaders)
       return false;
 
     var match = path.match("^/devtools/page/(.+)$");
@@ -212,14 +245,14 @@ DebuggerSocket.prototype = {
       chrome.debugger.attach(
           debuggee,
           VersionInfo.DEBUGGER_PROTOCOL,
-          this._onDebuggerAttach.bind(this, debuggee));
+          this._onDebuggerAttach.bind(this, debuggee, responseHeaders));
       return true;
     }
     this._respond404("WebSocket not found at " + path);
     return true;
   },
 
-  _onDebuggerAttach: function(debuggee) {
+  _onDebuggerAttach: function(debuggee, responseHeaders) {
     if (chrome.runtime.lastError) {
       console.error(chrome.runtime.lastError.message);
       this._respond404(chrome.runtime.lastError.message);
@@ -238,7 +271,7 @@ DebuggerSocket.prototype = {
     chrome.debugger.onDetach.addListener(this._onDebuggerDetachBound);
     chrome.debugger.onEvent.addListener(this._onDebuggerEventBound);
 
-    this._respond101();
+    this._respond101(responseHeaders);
   },
 
   _onDebuggerDetach: function(debuggee) {
@@ -304,7 +337,7 @@ DebuggerSocket.prototype = {
 
 var Hybi17 = {};
 
-Hybi17.encode = function(data) {
+Hybi17.encode = function(data, useMask) {
   var lengthCode;
   var lengthFieldSize;
   if (data.length <= 125) {
@@ -317,12 +350,12 @@ Hybi17.encode = function(data) {
     lengthCode = 127;
     lengthFieldSize = 8;
   }
-  var dataStart = 2 + lengthFieldSize + 4;
+  var dataStart = 2 + lengthFieldSize + (useMask ? 4 : 0);
 
   var frame = new Uint8Array(dataStart + data.length);
 
   frame[0] = 128 | 1;
-  frame[1] = 128 | lengthCode;
+  frame[1] = (useMask ? 128 : 0) | lengthCode;
 
   if (lengthFieldSize) {
     var longLength = data.length;
@@ -332,12 +365,16 @@ Hybi17.encode = function(data) {
     }
   }
 
-  var mask = frame.subarray(dataStart - 4, dataStart);
-  for (var i = 0; i != mask.length; ++i)
-    mask[i] = Math.ceil(Math.random() * 0xFF);
+  if (useMask) {
+    var mask = frame.subarray(dataStart - 4, dataStart);
+    for (var i = 0; i != mask.length; ++i)
+      mask[i] = Math.ceil(Math.random() * 0xFF);
 
-  for (var i = 0; i != data.length; ++i)
-    frame[dataStart + i] = data[i] ^ mask[i % 4];
+    for (var i = 0; i != data.length; ++i)
+      frame[dataStart + i] = data[i] ^ mask[i % 4];
+  } else {
+    frame.set(data, dataStart);
+  }
 
   return frame;
 };
