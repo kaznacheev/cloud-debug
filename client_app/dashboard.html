@@ -16,21 +16,21 @@
         <input type="checkbox" id="runInBackground">
         <label for="runInBackground">Run in background</label>
       </span>
-      <span title="Emulate ADB server at port 5037">
+      <span title="Connect to the target data source, serve the data locally">
         <input type="checkbox" id="runProxyServer">
         <label for="runProxyServer">Connect</label>
       </span>
-      <span class="dim" title="Run mock cloud device, get target data from localhost:9222">
-        <input type="checkbox" id="runTestDevice">
-        <label for="runTestDevice">Mock device</label>
-      </span>
-      <span class="dim" title="Do to connect to GCD, get target data directly from localhost:9222">
+      <span class="dim" title="Do not connect to GCD, get target data directly from localhost:9222">
         <input type="checkbox" id="connectToLocalhost">
         <label for="connectToLocalhost">Bypass GCD</label>
       </span>
-      <span class="dim" title="Serve remote debugging protocol at localhost:9223">
+      <span class="dim" title="Do not emulate ADB, serve target data off localhost:9223">
         <input type="checkbox" id="serveHttp">
         <label for="serveHttp">Serve HTTP</label>
+      </span>
+      <span class="dim" title="Run mock cloud device that gets target data from localhost:9222">
+        <input type="checkbox" id="runTestDevice">
+        <label for="runTestDevice">Mock device</label>
       </span>
       <span class="dim" title="Use staging GCD server">
         <input type="checkbox" id="useGCDStaging">
