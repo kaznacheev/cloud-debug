@@ -8,8 +8,6 @@ function DeviceConnector() {
       this._start.bind(this, null));
 }
 
-DeviceConnector.debug = false;
-
 DeviceConnector.ICE_CONFIG_URL = "http://computeengineondemand.appspot.com/turn?username=28230128&key=4080218913";
 
 DeviceConnector.prototype = {
@@ -186,7 +184,6 @@ DeviceConnector.Connection.prototype = {
 
   _exchangeSignaling: function(message, successCallback, errorCallback) {
     var reportError = function(status) {
-      this.error("GCD error: " + status);
       this._status.gcd = status;
       if (errorCallback)
         errorCallback(status);
@@ -200,8 +197,10 @@ DeviceConnector.Connection.prototype = {
         },
         function(response) {
           if (response.state != "done") {
+            this.warn("GCD command not processed");
             reportError(response.state)
           } else if (!response.results) {
+            this.warn("GCD command has empty response");
             reportError("bad response")
           } else if (successCallback) {
             this._status.gcd = 'OK';
@@ -209,6 +208,7 @@ DeviceConnector.Connection.prototype = {
           }
         }.bind(this),
         function(status) {
+          this.error("GCD request status " +  status);
           reportError("HTTP " + status);
         });
   },
