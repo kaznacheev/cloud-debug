@@ -13,6 +13,7 @@
   ],
   "background": {
     "scripts": [
+      "js/import/lib/logger.js",
       "js/debugger_socket.js",
       "js/import/lib/byte_array.js",
       "js/import/lib/gcd.js",
