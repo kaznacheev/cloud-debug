@@ -46,6 +46,7 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
     chrome.storage.local.get(function (items) {
       function started() {
         successCallback();
+        GCD.Device._stopped = false;
         GCD.Device.poll(commandHandler, deviceStateGetter);
       }
 
@@ -192,9 +193,15 @@ GCD.Device.receivedCommands = function(commandHandler, deviceStateGetter, comman
     return;
 
   if ('commands' in commands) {
-    commands.commands.forEach(function (command) {
+    if (commands.commands.length > 1) {
+      GCD.Device.warn(commands.commands.length + " commands queued, skipping");
+      commands.commands.forEach(function (command) {
+        GCD.Device.respondToCommand(command.id, 'done');
+      });
+    } else {
+      var command = commands.commands[0];
+      GCD.Device.debug("Received command: " + command.name);
       try {
-        GCD.Device.debug("Received command: " + command.name);
         commandHandler(
             command.name,
             command.parameters,
@@ -202,7 +209,7 @@ GCD.Device.receivedCommands = function(commandHandler, deviceStateGetter, comman
       } catch (e) {
         GCD.Device.error("Error processing command: " + command.name, e)
       }
-    });
+    }
   }
 
   GCD.Device.TIMEOUT = setTimeout(GCD.Device.poll, 1000, commandHandler, deviceStateGetter);
@@ -331,7 +338,7 @@ GCD.User.requestDevices = function(callback) {
 GCD.User.sendCommand = function(deviceId, name, parameters, callback) {
   GCD.User.request(
       'POST',
-      'commands',
+      'commands?expireInMs=10000',
       {
         deviceId: deviceId,
         name: name,
