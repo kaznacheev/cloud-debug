@@ -1,7 +1,5 @@
 var TCP = {};
 
-TCP.debug = false;
-
 TCP.Socket = function(id, opt_owner) {
   this._id = id;
   this._owner = opt_owner;

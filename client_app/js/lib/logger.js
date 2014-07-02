@@ -2,11 +2,13 @@ var Logger = {};
 
 Logger.LEVELS = ['debug', 'log', 'warn', 'error'];
 
+Logger.debug = {};
+
 Logger.install = function(object, context, opt_id) {
   if (!context)
     context = object;
 
-  if (typeof context === 'function')
+  if (typeof context !== 'string')
     context = context.name;
 
   var contextString = context;
@@ -16,7 +18,7 @@ Logger.install = function(object, context, opt_id) {
   contextString = "[" + contextString + "]";
 
   function isEnabled(level) {
-    return level != 'debug' || context.debug;
+    return level != 'debug' || Logger.debug[context];
   }
 
   Logger.LEVELS.forEach(function(level) {

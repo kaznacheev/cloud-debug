@@ -1,6 +1,4 @@
-var SocketTunnel = {};
-
-SocketTunnel.debug = false;
+function SocketTunnel() {}
 
 SocketTunnel.PacketType = {
   OPEN: 1,
@@ -18,7 +16,7 @@ SocketTunnel.PACKET_TYPE_SIZE = 1;
 SocketTunnel.PAYLOAD_OFFSET = SocketTunnel.PACKET_TYPE_OFFSET + SocketTunnel.PACKET_TYPE_SIZE;
 
 SocketTunnel.Base = function(transportSocket, logId) {
-  Logger.install(this, "SocketTunnel", logId);
+  Logger.install(this, SocketTunnel, logId);
   
   this._transportSocket = transportSocket;
   this._transportSocket.onmessage = this._onTunnelMessage.bind(this);

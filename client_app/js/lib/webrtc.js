@@ -319,14 +319,14 @@ WebRTCServerSocket.SignalingHandler.prototype = {
 
           if (messageObj.iceServers) {
             if (this._webrtcConnection) {
-              this.error("Connection already exists");
+              this.error("Connection already exists (ICE config)");
               respondFunc([]);
               return;
             }
             this._iceServersConfig = messageObj;
           } else if (messageObj.type == "offer") {
             if (this._webrtcConnection) {
-              this.error("Connection already exists");
+              this.error("Connection already exists (offer)");
               respondFunc([]);
               return;
             }

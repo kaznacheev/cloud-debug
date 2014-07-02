@@ -1,6 +1,6 @@
 function ProxyDevice() {}
 
-Logger.install(ProxyDevice, ProxyDevice);
+Logger.install(ProxyDevice);
 
 ProxyDevice.start = function(socketList, localSocketFactory, callback) {
   ProxyDevice._socketList = socketList;
