@@ -5,6 +5,10 @@ var CONNECT_LOCALHOST_KEY = "connectToLocalhost";
 var SERVE_HTTP_KEY = "serveHttp";
 var USE_GCD_STAGING_KEY = "useGCDStaging";
 
+var LOCAL_HOST = "127.0.0.1";
+var ADB_PORT = 5037;
+var HTTP_PORT = 9223;
+
 function storeSetting(key, on) {
   if (!!window[key] == !!on)
     return false;
@@ -82,11 +86,9 @@ function deleteConnector() {
 var server;
 
 function createProxyServer() {
-  var LOCAL_HOST = "127.0.0.1";
   if (window[SERVE_HTTP_KEY]) {
-    server = new TCP.Server(LOCAL_HOST, 9222, HttpProxyHandler.create.bind(null, connector));
+    server = new TCP.Server(LOCAL_HOST, HTTP_PORT, HttpProxyHandler.create.bind(null, connector));
   } else {
-    var ADB_PORT = 5037;
     server = new TCP.Server(LOCAL_HOST, ADB_PORT, AdbCommandHandler.create.bind(null, connector));
   }
 }
@@ -105,7 +107,7 @@ function createSocket(socketName, channelId, callback) {
     callback();
     return;
   }
-  TCP.Socket.connect("127.0.0.1", port, ProxyDevice, callback);
+  TCP.Socket.connect(LOCAL_HOST, port, ProxyDevice, callback);
 }
 
 var deviceStarting;
