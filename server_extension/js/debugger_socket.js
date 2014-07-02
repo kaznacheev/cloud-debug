@@ -98,7 +98,7 @@ DebuggerSocket.prototype = {
   _respond200: function (body) {
     var headers;
     if (body && (typeof body != 'string')) {
-      body = JSON.stringify(body);
+      body = JSON.stringify(body, null, 2);
       headers = {
         "Content-Type": "application/json"
       };
