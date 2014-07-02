@@ -300,7 +300,8 @@ WebRTCServerSocket.SignalingHandler.prototype = {
     return !!this._buffer.length;
   },
 
-  processIncoming: function(message, respondFunc) {
+  processIncoming: function(message) {
+    var response = [];
     if (!message) {
       // Just polling
     } else {
@@ -309,8 +310,7 @@ WebRTCServerSocket.SignalingHandler.prototype = {
         messageObjects = JSON.parse(message);
       } catch (e) {
         this.error("Cannot parse message", message, e);
-        respondFunc([]);
-        return;
+        return response;
       }
       try {
         for (var i = 0; i != messageObjects.length; i++) {
@@ -320,15 +320,13 @@ WebRTCServerSocket.SignalingHandler.prototype = {
           if (messageObj.iceServers) {
             if (this._webrtcConnection) {
               this.error("Connection already exists (ICE config)");
-              respondFunc([]);
-              return;
+              return response;
             }
             this._iceServersConfig = messageObj;
           } else if (messageObj.type == "offer") {
             if (this._webrtcConnection) {
               this.error("Connection already exists (offer)");
-              respondFunc([]);
-              return;
+              return response;
             }
             this._webrtcConnection = new WebRTCServerSocket();
             this._webrtcConnection.onclose = this._onConnectionClosed.bind(this);
@@ -347,12 +345,12 @@ WebRTCServerSocket.SignalingHandler.prototype = {
         }
       } catch (e) {
         this.error("Exception while processing", message, e.stack);
-        respondFunc([]);
-        return;
+        return response;
       }
     }
-    respondFunc(this._buffer);
+    response = this._buffer;
     this._buffer = [];
+    return response;
   },
 
   _enqueue: function(messageObject) {

@@ -37,19 +37,15 @@ ProxyDevice.getDeviceState = function() {
   return state;
 };
 
-ProxyDevice.handleCommand = function(name, parameters, patchResultsFunc) {
+ProxyDevice.handleCommand = function(name, parameters) {
   if (name != "base._connect") {
     ProxyDevice.error("Unknown command: " + name);
-    return;
+    return null;
   }
 
-  ProxyDevice._signalingHandler.processIncoming(
-      parameters._message,
-      function(messageObject) {
-        patchResultsFunc({
-          '_response': JSON.stringify(messageObject)
-        });
-      });
+  return {
+    '_response': JSON.stringify(ProxyDevice._signalingHandler.processIncoming(parameters._message))
+  };
 };
 
 ProxyDevice.openTunnel = function(localSocketFactory, connection) {
