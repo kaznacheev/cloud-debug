@@ -1,4 +1,6 @@
-var ProxyDevice = {};
+function ProxyDevice() {}
+
+Logger.install(ProxyDevice, ProxyDevice);
 
 ProxyDevice.start = function(socketList, localSocketFactory, callback) {
   ProxyDevice._socketList = socketList;
@@ -10,17 +12,17 @@ ProxyDevice.start = function(socketList, localSocketFactory, callback) {
         ProxyDevice._signalingHandler = new WebRTCServerSocket.SignalingHandler();
         ProxyDevice._signalingHandler.onaccept = ProxyDevice.openTunnel.bind(null, localSocketFactory);
         ProxyDevice._signalingHandler.onclose = ProxyDevice.closeTunnel;
-        console.log("Started proxy device");
+        ProxyDevice.log("Started");
         callback(true);
       },
       function() {
-        console.error("Could not start proxy device");
+        ProxyDevice.error("Could not start");
         callback(false);
       });
 };
 
 ProxyDevice.stop = function() {
-  console.log("Stopped proxy device");
+  ProxyDevice.log("Stopped");
   GCD.Device.stop();
   ProxyDevice._signalingHandler.stop();
   delete ProxyDevice._signalingHandler;
@@ -37,7 +39,7 @@ ProxyDevice.getDeviceState = function() {
 
 ProxyDevice.handleCommand = function(name, parameters, patchResultsFunc) {
   if (name != "base._connect") {
-    console.error("Unknown device command: " + name);
+    ProxyDevice.error("Unknown command: " + name);
     return;
   }
 

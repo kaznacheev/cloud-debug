@@ -97,7 +97,7 @@ function deleteProxyServer() {
 }
 
 
-function createSocket(socketName, callback) {
+function createSocket(socketName, channelId, callback) {
   var port;
   try {
     port = parseInt(socketName.match('\\d+$')[0]);

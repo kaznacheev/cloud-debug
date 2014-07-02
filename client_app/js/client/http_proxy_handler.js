@@ -1,11 +1,13 @@
-var HttpProxyHandler = {};
-
-HttpProxyHandler._channelId = 0;
+function HttpProxyHandler() {}
 
 HttpProxyHandler.create = function(deviceConnectionPool, clientSocket) {
+  var clientId = clientSocket.getId();
+
+  Logger.install(HttpProxyHandler, HttpProxyHandler, clientId);
+
   var ids = deviceConnectionPool.getDeviceIds();
   if (ids.length == 0) {
-    console.debug('No device connections');
+    HttpProxyHandler.debug('No device connections');
     clientSocket.close();
     return;
   }
@@ -13,7 +15,7 @@ HttpProxyHandler.create = function(deviceConnectionPool, clientSocket) {
   var connection = deviceConnectionPool.getDeviceConnection(ids[0]);
   var sockets = connection.getSockets();
   if (sockets.length == 0) {
-    console.debug('No sockets');
+    HttpProxyHandler.debug('No sockets');
     clientSocket.close();
     return;
   }
@@ -23,10 +25,9 @@ HttpProxyHandler.create = function(deviceConnectionPool, clientSocket) {
     pendingBytes = ByteArray.concat(pendingBytes, new Uint8Array(arrayBuffer));
   };
 
-  var channelId = ++HttpProxyHandler._channelId;
-  connection.createTunnel(sockets[0], channelId, function(tunnelSocket) {
+  connection.createTunnel(sockets[0], clientId, function(tunnelSocket) {
     if (!tunnelSocket) {
-      console.debug('Could not connect ' + channelId);
+      HttpProxyHandler.debug('Connection refused');
       clientSocket.close();
       return;
     }
@@ -36,6 +37,6 @@ HttpProxyHandler.create = function(deviceConnectionPool, clientSocket) {
     clientSocket.onclose = tunnelSocket.close.bind(tunnelSocket);
 
     tunnelSocket.send(pendingBytes.buffer);
-    console.debug('Connected ' + channelId + ', pending size: ' + pendingBytes.length);
+    HttpProxyHandler.debug('Connected (' + pendingBytes.length + ' bytes pending)');
   });
 };

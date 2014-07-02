@@ -1,4 +1,5 @@
 function DeviceConnector() {
+  Logger.install(this, DeviceConnector);
   this._connections = {};
 
   XHR.simpleGet(
@@ -25,13 +26,13 @@ DeviceConnector.prototype = {
         credential: turnServerConfig.password
       });
     }
-    console.log('Started device connector, ICE config:', JSON.stringify(this._iceServersConfig));
+    this.log('Started, ICE config:', JSON.stringify(this._iceServersConfig));
     this._active = true;
     this._queryDevices();
   },
   
   stop: function() {
-    console.log('Stopped device connector');
+    this.log('Stopped');
     delete this._active;
     if (this._timeout)
       clearTimeout(this._timeout);
@@ -92,15 +93,9 @@ DeviceConnector.Connection = function(resource, iceServersConfig) {
   this._displayName = resource.displayName;
   this._iceServersConfig = iceServersConfig;
 
-  var logPrefix = "Connection to " + this._displayName + ":";
-  this._logInfo = console.info.bind(console, logPrefix);
-  this._logError = console.error.bind(console, logPrefix);
-  if (DeviceConnector.debug)
-    this._logDebug = console.debug.bind(console, logPrefix);
-  else
-    this._logDebug = function() {};
+  Logger.install(this, "DeviceConnector.Connection", this._displayName);
 
-  this._logInfo('Created');
+  this.log('Added');
 
   this._sockets = [];
 
@@ -114,7 +109,7 @@ DeviceConnector.Connection.RECONNECT_TIMEOUT = 3000;
 
 DeviceConnector.Connection.prototype = {
   connect: function() {
-    this._webrtcConnection = new WebRTCClientSocket('WebRTC connection to ' + this._displayName);
+    this._webrtcConnection = new WebRTCClientSocket(this._displayName);
     this._webrtcConnection.onopen = this._onConnectionOpen.bind(this);
     this._webrtcConnection.onclose = this._onConnectionClosed.bind(this);
 
@@ -125,7 +120,7 @@ DeviceConnector.Connection.prototype = {
   },
 
   stop: function() {
-    this._logInfo('Destroyed');
+    this.log('Removed');
     if (!this._reconnectTime)
       this._webrtcConnection.close();
   },
@@ -139,7 +134,7 @@ DeviceConnector.Connection.prototype = {
   },
 
   getScreenSize: function () {
-    return "";
+    return "(0,50)-(0,1200)"; // TODO: Get from device.
   },
 
   getSockets: function() {
@@ -191,7 +186,7 @@ DeviceConnector.Connection.prototype = {
 
   _exchangeSignaling: function(message, successCallback, errorCallback) {
     var reportError = function(status) {
-      this._logError("GCD error " + status);
+      this.error("GCD error: " + status);
       this._status.gcd = status;
       if (errorCallback)
         errorCallback(status);

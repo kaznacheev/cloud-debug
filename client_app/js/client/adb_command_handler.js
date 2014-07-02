@@ -1,4 +1,6 @@
 function AdbCommandHandler(deviceConnectionPool, socket) {
+  Logger.install(this, AdbCommandHandler, socket.getId());
+
   this._deviceConnectionPool = deviceConnectionPool;
 
   this._clientSocket = socket;
@@ -45,6 +47,7 @@ AdbCommandHandler.prototype = {
       try {
         commandSize = AdbCommandHandler._parseLengthMarker(this._byteBuffer);
       } catch (e) {
+        this.error('Bad length marker', ByteArray.toString(buffer.subarray(0, AdbCommandHandler.LENGTH_MARKER_SIZE)));
         this._replyFAIL();
         return;
       }
@@ -83,13 +86,19 @@ AdbCommandHandler.prototype = {
         this._replyOKAY();
         return;
       }
+
+      this.error('Unsupported host command', hostCommand);
+      this._replyFAIL();
+      return;
     }
+    this.error('Unsupported command', command);
     this._replyFAIL();
   },
 
   _processDeviceCommand: function(deviceId, deviceCommand) {
     var deviceConnection = this._deviceConnectionPool.getDeviceConnection(deviceId);
     if (!deviceConnection) {
+      this.error('Cannot find device ' + deviceId);
       this._replyFAIL();
       return;
     }
@@ -108,6 +117,7 @@ AdbCommandHandler.prototype = {
       return;
     }
 
+    this.error('Unsupported device command', deviceCommand);
     this._replyFAIL();
   },
 
@@ -115,18 +125,22 @@ AdbCommandHandler.prototype = {
     switch(shellCommand) {
       case "getprop ro.product.model":
         var name = deviceConnection.getDeviceName();
-        if (name)
+        if (name) {
           this._replyOKAY(name);
-        else
+        } else {
+          this.error('Missing device name');
           this._replyFAIL();
+        }
         break;
 
       case "dumpsys window policy":
         var size = deviceConnection.getScreenSize();
-        if (size)
+        if (size) {
           this._replyOKAY(AdbCommandHandler._simulateDumpSys(size));
-        else
+        } else {
+          this.error('Missing screen size');
           this._replyFAIL();
+        }
         break;
 
       case "ps":
@@ -140,6 +154,7 @@ AdbCommandHandler.prototype = {
         break;
 
       default:
+        this.error('Unsupported shell command', shellCommand);
         this._replyFAIL();
     }
   },
@@ -147,6 +162,7 @@ AdbCommandHandler.prototype = {
   _createTunnel: function(deviceConnection, deviceSocketName) {
     deviceConnection.createTunnel(deviceSocketName, this._clientSocket._id, function (tunnelSocket) {
       if (!tunnelSocket) {
+        this.error('Refused connection to ' + deviceSocketName + ' on ' + deviceConnection.getDeviceName());
         this._replyFAIL();
         return;
       }
