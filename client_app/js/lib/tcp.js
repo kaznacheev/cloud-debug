@@ -6,13 +6,8 @@ TCP.Socket = function(id, opt_owner) {
   this._id = id;
   this._owner = opt_owner;
 
-  var logPrefix = "Socket " + this._id;
-  this._logError = console.error.bind(console, logPrefix);
-  if (TCP.debug)
-    this._logDebug = console.debug.bind(console, logPrefix);
-  else
-    this._logDebug = function() {};
-
+  Logger.install(this, "TCP.Socket", this._id);
+  
   TCP.Socket._register(this);
 };
 
@@ -22,7 +17,7 @@ TCP.Socket._registry = {};
 
 TCP.Socket._register = function(socket) {
   if (TCP.Socket._registry[socket._id]) {
-    socket._logError('already registered');
+    socket.error('Already registered');
     return;
   }
 
@@ -32,12 +27,12 @@ TCP.Socket._register = function(socket) {
   }
 
   TCP.Socket._registry[socket._id] = socket;
-  socket._logDebug("created, total: " + TCP.Socket._count);
+  socket.debug("Created, total: " + TCP.Socket._count);
 };
 
 TCP.Socket._unregister = function(socket) {
   if (!TCP.Socket._registry[socket._id]) {
-    socket._logError('not registered');
+    socket.error('Not registered');
     return;
   }
 
@@ -47,7 +42,7 @@ TCP.Socket._unregister = function(socket) {
     chrome.sockets.tcp.onReceive.removeListener(TCP.Socket._dispatchReceive);
     chrome.sockets.tcp.onReceiveError.removeListener(TCP.Socket._dispatchReceiveError);
   }
-  socket._logDebug("deleted, total: " + TCP.Socket._count);
+  socket.debug("Deleted, total: " + TCP.Socket._count);
 };
 
 TCP.Socket.getByOwner = function(owner) {
@@ -63,12 +58,12 @@ TCP.Socket.getByOwner = function(owner) {
 };
 
 TCP.Socket.connect = function(peerAddress, peerPort, owner, callback) {
-  var logError = console.error.bind(console, "Connecting to " + peerAddress + ":" + peerPort);
   chrome.sockets.tcp.create(function(createInfo) {
     chrome.sockets.tcp.connect(createInfo.socketId, peerAddress, peerPort, function(result) {
+      var logger = Logger.create("TCP.Socket",  peerAddress + ":" + peerPort);
       try {
         if (chrome.runtime.lastError) {
-          logError(chrome.runtime.lastError.message);
+          logger.error(TCP.Socket, context, chrome.runtime.lastError.message);
           callback();
         } else if (result < 0) {
           callback();
@@ -76,7 +71,7 @@ TCP.Socket.connect = function(peerAddress, peerPort, owner, callback) {
           callback(new TCP.Socket(createInfo.socketId, owner));
         }
       } catch (e) {
-        logError(e.stack);
+        logger.error(TCP.Socket, e.stack);
       }
     }.bind(this));
   });
@@ -88,10 +83,10 @@ TCP.Socket._dispatchReceive = function(receiveInfo) {
     try {
       socket._onReceive(receiveInfo.data);
     } catch (e) {
-      socket._logError(e.stack);
+      socket.error(e.stack);
     }
   } else {
-    console.error('onReceive: unknown socket id ' + receiveInfo.socketId);
+    Logger.create("TCP.Socket", receiveInfo.socketId).error("onReceive: unknown socket");
   }
 };
 
@@ -101,14 +96,18 @@ TCP.Socket._dispatchReceiveError = function(receiveInfo) {
     try {
       socket._onReceiveError(receiveInfo.resultCode);
     } catch (e) {
-      socket._logError(e.stack);
+      socket.error(e.stack);
     }
   } else {
-    console.error('onReceiveError: unknown socket id ' + receiveInfo.socketId);
+    Logger.create("TCP.Socket", receiveInfo.socketId).error("onReceiveError: unknown socket");
   }
 };
 
 TCP.Socket.prototype = {
+  getId: function() {
+    return this._id;
+  },
+
   close: function() {
     if (this._closing)
       return;
@@ -121,12 +120,12 @@ TCP.Socket.prototype = {
 
   send: function(data) {
     chrome.sockets.tcp.send(this._id, data, function(sendInfo) {
-      if (sendInfo.resultCode < 0) {
-        this._logError('send error '+ sendInfo.resultCode);
-      } else if (sendInfo.bytesSent != data.byteLength)
-        this._logError('sent ' + sendInfo.bytesSent + ' out of ' + data.byteLength + ' bytes');
+      if (sendInfo.resultCode < 0)
+        this.error('Send error '+ sendInfo.resultCode);
+      else if (sendInfo.bytesSent != data.byteLength)
+        this.error('Sent ' + sendInfo.bytesSent + ' out of ' + data.byteLength + ' bytes');
       else
-        this._logDebug('sent ' + data.byteLength + ' bytes');
+        this.debug('Sent ' + data.byteLength + ' bytes');
     }.bind(this));
   },
 
@@ -136,7 +135,7 @@ TCP.Socket.prototype = {
   },
 
   _onReceive: function(data) {
-    this._logDebug('received ' + data.byteLength + ' bytes');
+    this.debug('Received ' + data.byteLength + ' bytes');
     if (this._closing)
       return;
 
@@ -156,9 +155,8 @@ TCP.Server = function(address, port, handler) {
   this._port = port;
   this._handler = handler;
 
-  var logPrefix = address + ":" + port;
-  this._logInfo = console.info.bind(console, logPrefix);
-  this._logError = console.error.bind(console, logPrefix);
+  Logger.install(this, "TCP.Server", address + ":" + port);
+
   chrome.sockets.tcpServer.create(this._onCreate.bind(this));
 };
 
@@ -169,7 +167,7 @@ TCP.Server.prototype = {
     this._closing = true;
     if (this._socketId) {
       chrome.sockets.tcpServer.close(this._socketId);
-      this._logInfo('Closed server socket ' + this._socketId);
+      this.log('Closed server socket ' + this._socketId);
     }
     if (this._onAcceptBound)
       chrome.sockets.tcpServer.onAccept.removeListener(this._onAcceptBound);
@@ -180,10 +178,10 @@ TCP.Server.prototype = {
   },
 
   _onCreate: function(createInfo) {
-    this._logInfo('Created server socket ' + createInfo.socketId);
+    this.log('Created server socket ' + createInfo.socketId);
     if (this._closing) {
       chrome.sockets.tcpServer.close(createInfo.socketId);
-      this._logInfo('Closed server socket ' + createInfo.socketId);
+      this.log('Closed server socket ' + createInfo.socketId);
       return;
     }
     this._socketId = createInfo.socketId;
@@ -193,9 +191,10 @@ TCP.Server.prototype = {
 
   _onListen: function(result) {
     if (result) {
-      this._logError('Listen returned ' + result);
+      this.error('Listen returned ' + result);
       return;
     }
+    this.debug('Listening');
     this._onAcceptBound = this._onAccept.bind(this);
     chrome.sockets.tcpServer.onAccept.addListener(this._onAcceptBound);
   },
@@ -203,11 +202,12 @@ TCP.Server.prototype = {
   _onAccept: function(acceptInfo) {
     if (acceptInfo.socketId != this._socketId)
       return;
+    this.debug("Accepted", acceptInfo.clientSocketId);
     var socket = new TCP.Socket(acceptInfo.clientSocketId, this);
     try {
       this._handler(socket);
     } catch (e) {
-      socket._logError("Handler constructor failed", e.stack);
+      socket.error("Accept handler failed", e.stack);
       socket.close();
       return;
     }

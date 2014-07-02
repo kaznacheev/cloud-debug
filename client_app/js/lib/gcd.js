@@ -13,6 +13,8 @@ GCD.createRequestUrl = function(path) {
 
 GCD.Device = {};
 
+Logger.install(GCD.Device, "GCD.Device");
+
 GCD.Device.SCOPE = "https://www.googleapis.com/auth/clouddevices";
 
 GCD.Device.DEFAULT_NAME = "DevTools Bridge";
@@ -56,11 +58,11 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
         })[0];
 
         if (registeredDevice) {
-          console.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + GCD.Device.STATE.id);
+          GCD.Device.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + GCD.Device.STATE.id);
           started();
           return;
         }
-        console.error("Cached device credentials are obsolete");
+        GCD.Device.warn("Cached device credentials are obsolete");
       } catch (e) {
       }
 
@@ -81,7 +83,7 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
       GCD.Device.register(
           deviceName,
           function (ticket, credentials) {
-            console.log("Registered device '" + ticket.deviceDraft.displayName + "' #" + ticket.deviceDraft.id);
+            GCD.Device.log("Registered device '" + ticket.deviceDraft.displayName + "' #" + ticket.deviceDraft.id);
             GCD.Device.STATE = {
               id: ticket.deviceDraft.id,
               access_token: credentials.access_token,
@@ -151,7 +153,7 @@ GCD.Device.unregister = function() {
     try {
       deviceId = JSON.parse(items.DEVICE_STATE).id;
     } catch(e) {
-      console.error('Failed to parse device state');
+      GCD.Device.error('Failed to parse device state');
       return;
     }
     GCD.User.request(
@@ -159,11 +161,11 @@ GCD.Device.unregister = function() {
         'devices/' + deviceId,
         null,
         function() {
-          console.log('Deleted device ' + deviceId);
+          GCD.Device.log('Deleted device ' + deviceId);
           chrome.storage.local.remove(GCD.Device.STATE_KEY);
         },
         function(status) {
-          console.error('Could not deleted device ' + deviceId + ', status=' + status);
+          GCD.Device.error('Could not deleted device ' + deviceId + ', status=' + status);
         });
   });
 };
@@ -180,7 +182,7 @@ GCD.Device.poll = function(commandHandler, deviceStateGetter) {
   if (!GCD.Device._cachedDeviceStateJson || GCD.Device._cachedDeviceStateJson != deviceStateJson) {
     GCD.Device._cachedDeviceStateJson = deviceStateJson;
     GCD.Device.patchVendorState(deviceState, function() {
-      console.debug("Patched device state: " + deviceStateJson);
+      GCD.Device.debug("Patched device state: " + deviceStateJson);
     });
   }
 };
@@ -192,12 +194,13 @@ GCD.Device.receivedCommands = function(commandHandler, deviceStateGetter, comman
   if ('commands' in commands) {
     commands.commands.forEach(function (command) {
       try {
+        GCD.Device.debug("Received command: " + command.name);
         commandHandler(
             command.name,
             command.parameters,
             GCD.Device.respondToCommand.bind(null, command.id));
       } catch (e) {
-        console.error("Error processing command: " + command.name, e)
+        GCD.Device.error("Error processing command: " + command.name, e)
       }
     });
   }
@@ -214,7 +217,7 @@ GCD.Device.respondToCommand = function(id, results) {
 
   function patchedCommand(command) {
     if (command.state != 'done')
-      console.error('Failed to patch command', command);
+      GCD.Device.error('Failed to patch command', command);
   }
 
   GCD.Device.request(
@@ -236,7 +239,7 @@ GCD.Device.refreshAccessToken = function(callback) {
         callback(GCD.Device.STATE.access_token);
       },
       function(status) {
-        console.error('Failed to refresh access token, status = ' + status);
+        GCD.Device.error('Failed to refresh access token, status = ' + status);
         callback();
       });
 };
@@ -251,7 +254,7 @@ GCD.Device.request = function(method, path, postData, successCallback, errorCall
 
   if (!errorCallback) {
     errorCallback = function(status, response) {
-      console.error(method + ' error ' + status + ', path = ' + path +
+      GCD.Device.error(method + ' error ' + status + ', path = ' + path +
           ', data = ' + JSON.stringify(postData) + ', response = ' + response);
     };
   }
@@ -292,11 +295,13 @@ GCD.Device.patchVendorState = function(state, callback) {
 
 GCD.User = {};
 
+Logger.install(GCD.User, "GCD.User");
+
 GCD.User.request = function(
     method, path, postData, successCallback, errorCallback) {
   if (!errorCallback) {
     errorCallback = function (status, response) {
-      console.error(method + ' error ' + status + ', path = ' + path +
+      GCD.User.error(method + ' error ' + status + ', path = ' + path +
           ', data = ' + JSON.stringify(postData) + ', response = ' + response);
     };
   }
@@ -305,7 +310,7 @@ GCD.User.request = function(
       { 'interactive': true },
       function(token) {
         if (chrome.runtime.lastError) {
-          console.error(chrome.runtime.lastError.message);
+          GCD.User.error(chrome.runtime.lastError.message);
           errorCallback(XHR.HTTP_ERROR_UNAUTHORIZED);
           return;
         }

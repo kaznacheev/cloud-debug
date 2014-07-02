@@ -17,7 +17,9 @@ SocketTunnel.PACKET_TYPE_SIZE = 1;
 
 SocketTunnel.PAYLOAD_OFFSET = SocketTunnel.PACKET_TYPE_OFFSET + SocketTunnel.PACKET_TYPE_SIZE;
 
-SocketTunnel.Base = function(transportSocket, logPrefix) {
+SocketTunnel.Base = function(transportSocket, logId) {
+  Logger.install(this, "SocketTunnel", logId);
+  
   this._transportSocket = transportSocket;
   this._transportSocket.onmessage = this._onTunnelMessage.bind(this);
 
@@ -33,13 +35,7 @@ SocketTunnel.Base = function(transportSocket, logPrefix) {
     recv_bytes: 0
   };
 
-  this._logError = console.error.bind(console, logPrefix);
-  if (SocketTunnel.debug)
-    this._logDebug = console.debug.bind(console, logPrefix);
-  else
-    this._logDebug = function() {};
-
-  this._logDebug('created');
+  this.log('Open');
 };
 
 SocketTunnel.Base.prototype = {
@@ -48,7 +44,7 @@ SocketTunnel.Base.prototype = {
   },
 
   close: function () {
-    this._logDebug('closed');
+    this.log('Closed');
     delete this._transportSocket;
     for (var channelId in this._channelSockets)
       if (this._channelSockets.hasOwnProperty(channelId))
@@ -56,14 +52,15 @@ SocketTunnel.Base.prototype = {
   },
 
   _closeChannel: function (channelId, notify) {
-    this._logDebug("Channel " + channelId + " closed");
+    var logger = this._createChannelLogger(channelId);
+    logger.debug("closed");
     this._status.active--;
     if (notify)
       this._sendClose(channelId);
     if (this._channelSockets[channelId])
       delete this._channelSockets[channelId];
     else
-      this._logError("Channel " + channelId + " does not exist (closing)");
+      logger.error("does not exist (closing)");
   },
 
   _onTunnelMessage: function (buffer) {
@@ -98,39 +95,43 @@ SocketTunnel.Base.prototype = {
   },
 
   _sendClose: function (channelId) {
-    this._logDebug('Channel ' + channelId + ' disconnecting');
+    this._createChannelLogger(channelId).debug('disconnecting');
     this._send(channelId, SocketTunnel.PacketType.CLOSE);
   },
 
   _sendData: function (channelId, data) {
-    this._logDebug('Channel ' + channelId + ' sent ' + data.byteLength + ' bytes');
+    this._createChannelLogger(channelId).debug('sent ' + data.byteLength + ' bytes');
     this._status.sent_bytes += data.byteLength;
     this._send(channelId, SocketTunnel.PacketType.DATA, new Uint8Array(data));
+  },
+
+  _createChannelLogger: function(channelId) {
+    return Logger.append(this, "Channel " + channelId);
   }
 };
 
 SocketTunnel.Client = function(transportSocket, name) {
-  SocketTunnel.Base.call(this, transportSocket, "SocketTunnel.Client " + name + ":");
+  SocketTunnel.Base.call(this, transportSocket, name);
 
   this._pendingOpen = {};
 };
 
 SocketTunnel.Client.prototype = {
   connect: function (socketName, channelId, callback) {
+    var logger = this._createChannelLogger(channelId);
     if (!this._transportSocket || this._channelSockets[channelId] || this._pendingOpen[channelId]) {
-      var message = 'Channel ' + channelId + ' could not connect';
       if (!this._transportSocket)
-        this._logDebug(message + ', transport socket not connected');
+        logger.debug('connection refused (transport socket not connected)');
       else if (this._channelSockets[channelId])
-        this._logError(message + ', already connected');
+        logger.error('already connected');
       else
-        this._logError(message + ', already connecting');
+        logger.error('already connecting');
       callback();
       return;
     }
     this._pendingOpen[channelId] = callback;
 
-    this._logDebug('Channel ' + channelId + ' connecting');
+    logger.debug('connecting');
     this._send(channelId, SocketTunnel.PacketType.OPEN, ByteArray.fromString(socketName));
   },
   
@@ -143,9 +144,7 @@ SocketTunnel.Client.prototype = {
   },
 
   _processPacket: function(channelId, packetType, payload) {
-    var logPrefix = "Channel " + channelId;
-    var logError = this._logError.bind(null, logPrefix);
-    var logDebug = this._logDebug.bind(null, logPrefix);
+    var logger = this._createChannelLogger(channelId);
 
     var channelSocket = this._channelSockets[channelId];
 
@@ -156,53 +155,53 @@ SocketTunnel.Client.prototype = {
     switch (packetType) {
       case SocketTunnel.PacketType.OPEN:
         if (channelSocket) {
-          logError('already exists (OPEN)');
+          logger.error('already exists (OPEN)');
         } else if (openCallback) {
           this._status.connected++;
           this._status.active++;
-          logDebug('connected');
+          logger.debug('connected');
           channelSocket = new SocketTunnel.Client.ChannelSocket();
           channelSocket.oncloseinternal = this._closeChannel.bind(this, channelId, true);
           channelSocket.send = this._sendData.bind(this, channelId);
           this._channelSockets[channelId] = channelSocket;
           openCallback(channelSocket);
         } else {
-          logError('callback does not exist (OPEN');
+          logger.error('callback does not exist (OPEN');
         }
         break;
   
       case SocketTunnel.PacketType.REFUSE:
         this._status.refused++;
         if (openCallback) {
-          logDebug('connection refused');
+          logger.debug('connection refused');
           openCallback();
         } else {
-          logError('callback does not exist (REFUSE)');
+          logger.error('callback does not exist (REFUSE)');
         }
         break;
   
       case SocketTunnel.PacketType.CLOSE:
         if (channelSocket) {
-          logDebug('closed by server');
+          logger.debug('closed by server');
           channelSocket.oncloseinternal = this._closeChannel.bind(this, channelId, false);
           channelSocket.close();
         } else {
-          logError('does not exist (CLOSE');
+          logger.error('does not exist (CLOSE');
         }
         break;
   
       case SocketTunnel.PacketType.DATA:
         if (channelSocket) {
-          logDebug('received ' + payload.byteLength + ' bytes');
+          logger.debug('received ' + payload.byteLength + ' bytes');
           this._status.recv_bytes += payload.byteLength;
           channelSocket.receive(payload);
         } else {
-          logError('does not exist (DATA)');
+          logger.error('does not exist (DATA)');
         }
         break;
   
       default:
-        logError('received unknown packet type ' + packetType);
+        logger.error('received unknown packet type ' + packetType);
     }
   },
   
@@ -230,29 +229,27 @@ SocketTunnel.Client.ChannelSocket.prototype = {
 
 
 SocketTunnel.Server = function(transportSocket, localSocketFactory, name) {
-  SocketTunnel.Base.call(this, transportSocket, "SocketTunnel.Server " + name + ":");
+  SocketTunnel.Base.call(this, transportSocket, "Server");
   
   this._localSocketFactory = localSocketFactory;
 };
 
 SocketTunnel.Server.prototype = {
   _processPacket: function(channelId, packetType, payload) {
-    var logPrefix = "Channel " + channelId;
-    var logError = this._logError.bind(null, logPrefix);
-    var logDebug = this._logDebug.bind(null, logPrefix);
+    var logger = this._createChannelLogger(channelId);
 
     var channelSocket = this._channelSockets[channelId];
 
     switch (packetType) {
       case SocketTunnel.PacketType.OPEN:
         if (channelSocket) {
-          logError("already exists");
+          logger.error("already exists");
           return;
         }
         var socketName = ByteArray.toString(new Uint8Array(payload));
-        this._localSocketFactory(socketName, function(socket) {
+        this._localSocketFactory(socketName, channelId, function(socket) {
           if (socket) {
-            logDebug('connected');
+            logger.debug('connected');
             this._status.connected++;
             this._status.active++;
             this._channelSockets[channelId] = socket;
@@ -260,7 +257,7 @@ SocketTunnel.Server.prototype = {
             socket.onmessage = this._sendData.bind(this, channelId);
             this._send(channelId, SocketTunnel.PacketType.OPEN);
           } else {
-            logError('failed to connect to ' + socketName);
+            logger.error('failed to connect to ' + socketName);
             this._status.refused++;
             this._send(channelId, SocketTunnel.PacketType.REFUSE);
           }
@@ -269,26 +266,26 @@ SocketTunnel.Server.prototype = {
 
       case SocketTunnel.PacketType.CLOSE:
         if (channelSocket) {
-          logDebug('closed by client');
+          logger.debug('closed by client');
           channelSocket.onclose = this._closeChannel.bind(this, channelId, false);
           channelSocket.close();
         } else {
-          logError("does not exist (CLOSE)");
+          logger.error("does not exist (CLOSE)");
         }
         break;
 
       case SocketTunnel.PacketType.DATA:
         if (channelSocket) {
-          logDebug('received ' + payload.byteLength + ' bytes');
+          logger.debug('received ' + payload.byteLength + ' bytes');
           this._status.recv_bytes += payload.byteLength;
           channelSocket.send(payload);
         } else {
-          logError("does not exist (DATA)");
+          logger.error("does not exist (DATA)");
         }
         break;
 
       default:
-        logError('received unknown packet type ' + packetType);
+        logger.error('received unknown packet type ' + packetType);
     }
   },
 

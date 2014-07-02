@@ -1,4 +1,6 @@
-var XHR = {};
+function XHR() {}
+
+Logger.install(XHR);
 
 XHR.HTTP_OK = 200;
 XHR.HTTP_NO_RESPONSE = 204;
@@ -23,7 +25,7 @@ XHR.requestWithToken = function(method, url, postData, successCallback, errorCal
   xhr.onload = function() {
     var elapsed = (Date.now() - requestTime) / 1000;
     if (elapsed > 5)
-      console.warn(method + ' request took ' + elapsed.toFixed(1) + 's');
+      XHR.warn(method + ' request took ' + elapsed.toFixed(1) + 's');
     XHR._parseJSONResponse(xhr, successCallback, errorCallback);
   };
   if (postData && (typeof postData == 'object'))
@@ -67,7 +69,7 @@ XHR._parseJSONResponse = function(xhr, successCallback, errorCallback) {
   try {
     json = JSON.parse(xhr.response);
   } catch (e) {
-    console.error('JSON parse error: ' + xhr.response);
+    XHR.error('JSON parse error: ' + xhr.response);
   }
 
   if (xhr.status == XHR.HTTP_OK) {
