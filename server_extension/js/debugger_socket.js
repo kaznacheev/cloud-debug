@@ -1,6 +1,10 @@
-function DebuggerSocket(channelId) {
-  this._buffer = "";
+function DebuggerSocket(versionInfo, channelId) {
   Logger.install(this, DebuggerSocket, channelId);
+
+  this._versionInfo = versionInfo;
+  this._frontendUrl = DebuggerSocket.FRONTEND_URL.replace("{REV}", this._versionInfo["WebKit-Revision"]);
+
+  this._buffer = "";
 }
 
 DebuggerSocket.DEFAULT_SOCKET = "chrome_devtools_remote";
@@ -8,10 +12,13 @@ DebuggerSocket.DEFAULT_SOCKET = "chrome_devtools_remote";
 DebuggerSocket.FRONTEND_URL = "http://chrome-devtools-frontend.appspot.com/serve_rev/@{REV}/devtools.html";
 
 DebuggerSocket.connect = function(socketName, channelId, callback) {
-  if (socketName == DebuggerSocket.DEFAULT_SOCKET)
-    callback(new DebuggerSocket(channelId));
-  else
+  if (socketName != DebuggerSocket.DEFAULT_SOCKET) {
     callback();
+    return;
+  }
+  VersionInfo.request(function(versionInfo) {
+    callback(new DebuggerSocket(versionInfo, channelId));
+  });
 };
 
 DebuggerSocket.prototype = {
@@ -114,10 +121,10 @@ DebuggerSocket.prototype = {
     this._respondHTTP(404, "Not found", null, message);
   },
 
-  _augmentTarget:  function(frontendUrl, host, target) {
+  _augmentTarget:  function(host, target) {
     if (!target.attached) {
       var debugPath = host + "/devtools/page/" + target.id;
-      target.devtoolsFrontendUrl = frontendUrl + "?ws=" + debugPath;
+      target.devtoolsFrontendUrl = this._frontendUrl + "?ws=" + debugPath;
       target.webSocketDebuggerUrl = "ws://" + debugPath;
     }
     return target;
@@ -130,11 +137,8 @@ DebuggerSocket.prototype = {
   },
 
   _getTargetList: function(host, callback) {
-    VersionInfo.request(function(version) {
-      var frontendUrl = DebuggerSocket.FRONTEND_URL.replace("{REV}", version["WebKit-Revision"]);
-      chrome.debugger.getTargets(function (targets) {
-        callback(targets.map(this._augmentTarget.bind(this, frontendUrl, host)));
-      }.bind(this));
+    chrome.debugger.getTargets(function (targets) {
+      callback(targets.map(this._augmentTarget.bind(this, host)));
     }.bind(this));
   },
 
@@ -150,7 +154,7 @@ DebuggerSocket.prototype = {
     }
 
     if (path == '/json/version') {
-      VersionInfo.request(this._respond200.bind(this));
+      this._respond200(this._versionInfo);
       return;
     }
 
@@ -165,8 +169,27 @@ DebuggerSocket.prototype = {
       var url = match[2];
       if (url)
         params.url = decodeURIComponent(url);
-      chrome.tabs.create(params);
-      this._respond200();
+
+      var newTabId;
+      var onUpdated = function(tabId, changeInfo) {
+        if (newTabId != tabId)
+          return;
+        if (changeInfo.status == 'loading')
+          return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        chrome.debugger.getTargets(function(targets) {
+          var newTarget = targets.filter(function(t) { return t.tabId == tabId; })[0];
+          if (newTarget)
+            this._respond200(this._augmentTarget(host, newTarget));
+          else
+            this._respond404("Target info not available");
+        }.bind(this));
+      }.bind(this);
+
+      chrome.tabs.create(params, function(tab) {
+        newTabId = tab.id;
+        chrome.tabs.onUpdated.addListener(onUpdated);
+      });
       return;
     }
 
