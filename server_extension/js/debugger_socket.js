@@ -1,14 +1,15 @@
-function DebuggerSocket() {
+function DebuggerSocket(channelId) {
   this._buffer = "";
+  Logger.install(this, DebuggerSocket, channelId);
 }
 
 DebuggerSocket.DEFAULT_SOCKET = "chrome_devtools_remote";
 
 DebuggerSocket.FRONTEND_URL = "http://chrome-devtools-frontend.appspot.com/serve_rev/@{REV}/devtools.html";
 
-DebuggerSocket.connect = function(socketName, callback) {
+DebuggerSocket.connect = function(socketName, channelId, callback) {
   if (socketName == DebuggerSocket.DEFAULT_SOCKET)
-    callback(new DebuggerSocket());
+    callback(new DebuggerSocket(channelId));
   else
     callback();
 };
@@ -138,7 +139,7 @@ DebuggerSocket.prototype = {
   },
 
   _handleGet: function (path, headers) {
-    console.debug("GET " + path);
+    this.debug("GET " + path);
     var host = headers['host'] || '';
 
     if (path == "/") {
@@ -254,12 +255,12 @@ DebuggerSocket.prototype = {
 
   _onDebuggerAttach: function(debuggee, responseHeaders) {
     if (chrome.runtime.lastError) {
-      console.error(chrome.runtime.lastError.message);
+      this.error(chrome.runtime.lastError.message);
       this._respond404(chrome.runtime.lastError.message);
       return;
     }
 
-    console.debug('Debugger attached');
+    this.debug('Debugger attached');
     if (this._closing) {
       chrome.debugger.detach(debuggee, function() {});
       return;
@@ -278,7 +279,7 @@ DebuggerSocket.prototype = {
     if (this._debuggee.targetId != debuggee.targetId)
       return;
 
-    console.debug('Debugger detached');
+    this.debug('Debugger detached');
     this.close();
   },
 
@@ -300,7 +301,7 @@ DebuggerSocket.prototype = {
       try {
         result = Hybi17.decode(this._byteBuffer);
       } catch (e) {
-        console.error('Hybi17 decode error', e.stack);
+        this.error('Hybi17 decode error', e.stack);
         this.close();
         return;
       }
@@ -314,7 +315,7 @@ DebuggerSocket.prototype = {
       try {
         messageObj = JSON.parse(message);
       } catch (e) {
-        console.error('Cannot parse ' + message, e.stack);
+        this.error('Cannot parse ' + message, e.stack);
         this.close();
         return;
       }
