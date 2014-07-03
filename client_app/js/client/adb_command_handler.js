@@ -162,7 +162,7 @@ AdbCommandHandler.prototype = {
   _createTunnel: function(deviceConnection, deviceSocketName) {
     deviceConnection.createTunnel(deviceSocketName, this._clientSocket._id, function (tunnelSocket) {
       if (!tunnelSocket) {
-        this.error('Refused connection to ' + deviceSocketName + ' on ' + deviceConnection.getDeviceName());
+        this.debug('Refused connection to ' + deviceSocketName + ' on ' + deviceConnection.getDeviceName());
         this._replyFAIL();
         return;
       }

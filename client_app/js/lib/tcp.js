@@ -187,9 +187,9 @@ TCP.Server.prototype = {
         this._socketId, this._address, this._port, this._onListen.bind(this));
   },
 
-  _onListen: function(result) {
-    if (result) {
-      this.error('Listen returned ' + result);
+  _onListen: function() {
+    if (chrome.runtime.lastError) {
+      this.error(chrome.runtime.lastError.message);
       return;
     }
     this.debug('Listening');

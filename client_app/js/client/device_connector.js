@@ -197,7 +197,7 @@ DeviceConnector.Connection.prototype = {
         },
         function(response) {
           if (response.state != "done") {
-            this.warn("GCD command not processed");
+            this.debug("GCD command not processed");
             reportError(response.state)
           } else if (!response.results) {
             this.warn("GCD command has empty response");
