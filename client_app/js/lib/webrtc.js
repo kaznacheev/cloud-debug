@@ -1,6 +1,8 @@
 function WebRTCSocket() {}
 
-WebRTCSocket.DEFAULT_CONNECT_TIMEOUT = 10000;
+WebRTCSocket.SIGNALING_TIMEOUT = 10000;
+
+WebRTCSocket.WEBRTC_HANDSHAKE_TIMEOUT = 10000;
 
 WebRTCSocket.prototype = {
   connect: function(serverConfig, opt_timeout) {
@@ -15,10 +17,7 @@ WebRTCSocket.prototype = {
     this._dataChannel.onmessage = this._onDataChannelMessage.bind(this);
 
     this._connectTimestamp = Date.now();
-    this._connectTimeout = setTimeout(
-        this._onConnectTimeout.bind(this),
-        opt_timeout || WebRTCSocket.DEFAULT_CONNECT_TIMEOUT);
-    
+
     this.log("Connecting");
   },
 
@@ -52,6 +51,8 @@ WebRTCSocket.prototype = {
         new RTCSessionDescription(description),
         this._success("setRemoteDescription"),
         this._failure("setRemoteDescription"));
+    this.log("Initiated WebRTC handshake");
+    this._resetConnectTimeout(WebRTCSocket.WEBRTC_HANDSHAKE_TIMEOUT);
   },
 
   setLocalDescription: function(description) {
@@ -113,6 +114,12 @@ WebRTCSocket.prototype = {
     if (this.onerror)
       this.onerror();
     this.close();
+  },
+
+  _resetConnectTimeout: function(timeout) {
+    if (this._connectTimeout)
+      clearTimeout(this._connectTimeout);
+    this._connectTimeout = setTimeout(this._onConnectTimeout.bind(this), timeout);
   },
 
   _onConnectTimeout: function() {
@@ -182,6 +189,8 @@ WebRTCClientSocket.prototype = {
     this._peerConnection.createOffer(
         this.setLocalDescription.bind(this),
         this._onError.bind(this, "createOffer"));
+
+    this._resetConnectTimeout(WebRTCSocket.SIGNALING_TIMEOUT);
   },
 
   __proto__: WebRTCSocket.prototype
