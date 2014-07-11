@@ -47,6 +47,7 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
       function started() {
         successCallback();
         GCD.Device._stopped = false;
+        GCD.Device._status = {};
         GCD.Device.poll(commandHandler, deviceStateGetter);
       }
 
@@ -60,6 +61,7 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
 
         if (registeredDevice) {
           GCD.Device.log("Read cached credentials for device '" + registeredDevice.displayName + "' #" + GCD.Device.STATE.id);
+          GCD.Device._displayName = registeredDevice.displayName;
           started();
           return;
         }
@@ -85,6 +87,7 @@ GCD.Device.start = function(commandHandler, deviceStateGetter, successCallback, 
           deviceName,
           function (ticket, credentials) {
             GCD.Device.log("Registered device '" + ticket.deviceDraft.displayName + "' #" + ticket.deviceDraft.id);
+            GCD.Device._displayName = ticket.deviceDraft.displayName;
             GCD.Device.STATE = {
               id: ticket.deviceDraft.id,
               access_token: credentials.access_token,
@@ -107,6 +110,14 @@ GCD.Device.stop = function() {
     delete GCD.Device.TIMEOUT;
   }
   delete GCD.Device.STATE;
+};
+
+GCD.Device.getDisplayName = function() {
+  return GCD.Device._displayName;
+};
+
+GCD.Device.getStatus = function() {
+  return GCD.Device._status;
 };
 
 GCD.Device.register = function(deviceName, successCallback, errorCallback) {
@@ -248,26 +259,28 @@ GCD.Device.refreshAccessToken = function(callback) {
       });
 };
 
-GCD.Device.request = function(method, path, postData, successCallback, errorCallback) {
+GCD.Device.request = function(method, path, postData, successCallback) {
   var doRequest = XHR.requestWithToken.bind(
       null,
       method,
       GCD.createRequestUrl(path),
       postData,
-      successCallback);
+      function(response) {
+        GCD.Device._status.gcd = "OK";
+        successCallback(response);
+      });
 
-  if (!errorCallback) {
-    errorCallback = function(status, response) {
-      GCD.Device.error(method + ' error ' + status + ', path = ' + path +
-          ', data = ' + JSON.stringify(postData) + ', response = ' + response);
-    };
+  function reportError(status, response) {
+    GCD.Device._status.gcd = "HTTP " + status;
+    GCD.Device.error(method + ' error ' + status + ', path = ' + path +
+        ', data = ' + JSON.stringify(postData) + ', response = ' + response);
   }
 
-  function retryOnError(status) {
+  function retryOnError(status, response) {
     if (status == XHR.HTTP_ERROR_UNAUTHORIZED || status == XHR.HTTP_ERROR_FORBIDDEN)
-      GCD.Device.refreshAccessToken(doRequest.bind(null, errorCallback));
+      GCD.Device.refreshAccessToken(doRequest.bind(null, reportError));
     else
-      errorCallback(status);
+      reportError(status, response);
   }
 
   doRequest(retryOnError, GCD.Device.STATE.access_token);

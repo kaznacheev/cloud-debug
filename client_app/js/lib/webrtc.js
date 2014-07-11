@@ -309,6 +309,12 @@ WebRTCServerSocket.SignalingHandler.prototype = {
     return !!this._buffer.length;
   },
 
+  getStatus: function() {
+    if (this._webrtcConnection)
+      return this._webrtcConnection.getStatus();
+    return { ice: 'waiting' };
+  },
+
   processIncoming: function(message) {
     var response = [];
     if (!message) {

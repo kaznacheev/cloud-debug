@@ -32,8 +32,7 @@ onload = function() {
   setInterval(
       function() {
         chrome.runtime.getBackgroundPage(function(background) {
-          if (background.connector)
-            updateDashboard(background.connector);
+          updateDashboard(background.connector, background.device);
         });
       },
       1000);
@@ -80,44 +79,56 @@ function formatQuantity(number) {
   return mNumber.toFixed(mNumber < 10 ? 2 : 1) + 'M';
 }
 
-function updateDashboard(connector) {
-  var deviceIds = connector.getDeviceIds();
+function updateDashboard(connector, mockDevice) {
+  var deviceIds = connector ? connector.getDeviceIds() : [];
+
+  var MOCK_DEVICE_ID = "mock";
+  var newRowIds = deviceIds.concat(mockDevice ? [MOCK_DEVICE_ID] : []);
 
   var devicesDiv = document.getElementById('devices');
   var deviceRows = devicesDiv.querySelectorAll('.device');
   Array.prototype.forEach.call(deviceRows, function(row) {
-    if (deviceIds.indexOf(row.id) < 0)
+    if (newRowIds.indexOf(row.id) < 0)
       row.remove();
   });
 
+  if (mockDevice)
+    updateDashboardRow(devicesDiv, MOCK_DEVICE_ID, "Mock [" + mockDevice.getDisplayName() + "]", mockDevice.getStatus(), true);
+
   deviceIds.forEach(function(id) {
     var connection = connector.getDeviceConnection(id);
-
-    var row = document.getElementById(id);
-    if (!row) {
-      row = document.createElement('div');
-      row.id = id;
-      row.classList.add('device');
-      row.classList.add('table-row');
-      devicesDiv.appendChild(row);
-      
-      createRowCells(row);
-      row.firstElementChild.title = id;
-      row.firstElementChild.textContent = connection.getDeviceName();
-    }
-
-    var status = connection.getStatus();
-    for (var key in status)
-      if (status.hasOwnProperty(key)) {
-        var cell = row.querySelector('.' + key);
-        if (cell) {
-          var value = status[key];
-          if (key.match(/^(sent|recv)/))
-            value = formatQuantity(value);
-          cell.textContent = value;
-        } else {
-          console.error('Cannot find cell: ' + key);
-        }
-      }
+    updateDashboardRow(devicesDiv, id, connection.getDeviceName(), connection.getStatus());
   });
+}
+
+function updateDashboardRow(devicesDiv, id, name, status, opt_firstRow) {
+  var row = document.getElementById(id);
+  if (!row) {
+    row = document.createElement('div');
+    row.id = id;
+    row.classList.add('device');
+    row.classList.add('table-row');
+
+    if (opt_firstRow && devicesDiv.firstElementChild)
+      devicesDiv.insertBefore(row, devicesDiv.firstElementChild);
+    else
+      devicesDiv.appendChild(row);
+
+    createRowCells(row);
+    row.firstElementChild.title = id;
+    row.firstElementChild.textContent = name;
+  }
+
+  for (var key in status)
+    if (status.hasOwnProperty(key)) {
+      var cell = row.querySelector('.' + key);
+      if (cell) {
+        var value = status[key];
+        if (key.match(/^(sent|recv)/))
+          value = formatQuantity(value);
+        cell.textContent = value;
+      } else {
+        console.error('Cannot find cell: ' + key);
+      }
+    }
 }

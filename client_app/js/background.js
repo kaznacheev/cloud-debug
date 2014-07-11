@@ -111,6 +111,7 @@ function createSocket(socketName, channelId, callback) {
 }
 
 var deviceStarting;
+var device;
 
 function startProxyDevice() {
   if (deviceStarting)
@@ -121,8 +122,10 @@ function startProxyDevice() {
       createSocket,
       function(success) {
         deviceStarting = false;
-        if (success)
+        if (success) {
+          device = ProxyDevice;
           return;
+        }
         storeSetting(RUN_DEVICE_KEY, false);
         if (dashboardWindow && dashboardWindow.contentDocument) {
           dashboardWindow.contentDocument.getElementById(RUN_DEVICE_KEY).checked = false;
@@ -131,6 +134,7 @@ function startProxyDevice() {
 }
 
 function stopProxyDevice() {
+  device = null;
   ProxyDevice.stop();
 }
 

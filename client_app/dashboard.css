@@ -48,6 +48,10 @@ body {
   text-align: center;
 }
 
+.table-row#mock {
+  background-color: #eee;
+}
+
 #controls {
   position: absolute;
   padding: 5px 10px;

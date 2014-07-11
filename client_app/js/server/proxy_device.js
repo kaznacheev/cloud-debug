@@ -28,6 +28,24 @@ ProxyDevice.stop = function() {
   delete ProxyDevice._signalingHandler;
 };
 
+ProxyDevice.getDisplayName = function() {
+  return GCD.Device.getDisplayName();
+};
+
+ProxyDevice.getStatus = function() {
+  var result = {};
+  function mergeMap(to, from) {
+    for (var key in from)
+      if (from.hasOwnProperty(key))
+        to[key] = from[key];
+  }
+  mergeMap(result, GCD.Device.getStatus());
+  mergeMap(result, ProxyDevice._signalingHandler.getStatus());
+  if (ProxyDevice._tunnelServer)
+    mergeMap(result, ProxyDevice._tunnelServer.getStatus());
+  return result;
+};
+
 ProxyDevice.getDeviceState = function() {
   var state = {
     "sockets": ProxyDevice._socketList
