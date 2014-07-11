@@ -62,6 +62,7 @@ function createRowCells(row, isHeader) {
   createCell('Recv pckts');
   createCell('Sent bytes');
   createCell('Recv bytes');
+  createCell('Buffered');
 }
 
 function formatQuantity(number) {

@@ -77,7 +77,8 @@ WebRTCSocket.prototype = {
   getStatus: function() {
     return {
         ice: this._peerConnection.iceConnectionState,
-        data: this._dataChannel.readyState
+        data: this._dataChannel.readyState,
+        buffered: this._dataChannel.bufferedAmount
     };
   },
 
