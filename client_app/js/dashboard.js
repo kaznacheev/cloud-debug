@@ -125,7 +125,7 @@ function updateDashboardRow(devicesDiv, id, name, status, opt_firstRow) {
       var cell = row.querySelector('.' + key);
       if (cell) {
         var value = status[key];
-        if (key.match(/^(sent|recv)/))
+        if (key.match(/^(sent|recv|buffered)/))
           value = formatQuantity(value);
         cell.textContent = value;
       } else {
